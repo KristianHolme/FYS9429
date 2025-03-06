@@ -19,6 +19,32 @@ function default_model_config(; hidden_sizes=[32, 32, 32], activation=tanh, init
 end
 
 """
+    Base.show(io::IO, config::ModelConfig)
+
+Custom display for ModelConfig objects.
+"""
+function Base.show(io::IO, config::ModelConfig)
+    println(io, "ModelConfig:")
+    println(io, "├─ Hidden Sizes: $(config.hidden_sizes)")
+    println(io, "├─ Activation: $(config.activation)")
+    println(io, "└─ Init Strategy: $(config.init_strategy)")
+end
+
+"""
+    Base.show(io::IO, ::MIME"text/plain", config::ModelConfig)
+
+Detailed display for ModelConfig objects.
+"""
+function Base.show(io::IO, ::MIME"text/plain", config::ModelConfig)
+    println(io, "ModelConfig:")
+    println(io, "├─ Architecture: $(length(config.hidden_sizes)) hidden layers")
+    println(io, "├─ Hidden Sizes: $(config.hidden_sizes)")
+    println(io, "├─ Total Parameters: $(sum(config.hidden_sizes) + 2*sum(config.hidden_sizes[1:end-1]) + config.hidden_sizes[end])")
+    println(io, "├─ Activation: $(config.activation)")
+    println(io, "└─ Init Strategy: $(config.init_strategy)")
+end
+
+"""
     small_model_config()
 
 Create a small model configuration for quick testing of RDE PINNs.

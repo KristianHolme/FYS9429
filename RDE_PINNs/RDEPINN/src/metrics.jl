@@ -9,6 +9,7 @@ struct Metrics
     rmse::Float64
     r_squared::Float64
     final_loss::Float64
+    training_time::Float64  # in seconds
     history::Dict{Symbol, Vector{Float64}}
 end
 
@@ -51,11 +52,11 @@ function calculate_r_squared(predictions, targets)
 end
 
 """
-    calculate_metrics(predictions, targets, final_loss, loss_history)
+    calculate_metrics(predictions, targets, final_loss, loss_history, training_time=0.0)
 
 Calculate all metrics for a Rotating Detonation Engine PINN model.
 """
-function calculate_metrics(predictions, targets, final_loss, loss_history)
+function calculate_metrics(predictions, targets, final_loss, loss_history, training_time=0.0)
     mse = calculate_mse(predictions, targets)
     mae = calculate_mae(predictions, targets)
     rmse = calculate_rmse(predictions, targets)
@@ -64,7 +65,7 @@ function calculate_metrics(predictions, targets, final_loss, loss_history)
     history = Dict{Symbol, Vector{Float64}}()
     history[:loss] = loss_history
     
-    return Metrics(mse, mae, rmse, r_squared, final_loss, history)
+    return Metrics(mse, mae, rmse, r_squared, final_loss, training_time, history)
 end
 
 """
@@ -81,14 +82,15 @@ function compare_metrics(metrics_list, names)
     comparison[:rmse] = [m.rmse for m in metrics_list]
     comparison[:r_squared] = [m.r_squared for m in metrics_list]
     comparison[:final_loss] = [m.final_loss for m in metrics_list]
+    comparison[:training_time] = [m.training_time for m in metrics_list]
     
     # Create a table for display
     println("Metrics Comparison for RDE Experiments:")
     println("----------------------------------------")
-    println("Experiment\tMSE\t\tMAE\t\tRMSE\t\tR²\t\tFinal Loss")
+    println("Experiment\tMSE\t\tMAE\t\tRMSE\t\tR²\t\tFinal Loss\tTraining Time (s)")
     
     for i in 1:length(names)
-        println("$(names[i])\t$(round(comparison[:mse][i], digits=6))\t$(round(comparison[:mae][i], digits=6))\t$(round(comparison[:rmse][i], digits=6))\t$(round(comparison[:r_squared][i], digits=6))\t$(round(comparison[:final_loss][i], digits=6))")
+        println("$(names[i])\t$(round(comparison[:mse][i], digits=6))\t$(round(comparison[:mae][i], digits=6))\t$(round(comparison[:rmse][i], digits=6))\t$(round(comparison[:r_squared][i], digits=6))\t$(round(comparison[:final_loss][i], digits=6))\t$(round(comparison[:training_time][i], digits=2))")
     end
     
     return comparison
@@ -290,4 +292,38 @@ function compare_metrics(metrics_list::Vector{Dict{String, Any}}, labels::Vector
     axislegend(ax_r2)
     
     return fig
+end
+
+"""
+    Base.show(io::IO, metrics::Metrics)
+
+Custom display for Metrics objects.
+"""
+function Base.show(io::IO, metrics::Metrics)
+    println(io, "Metrics:")
+    println(io, "├─ MSE: $(round(metrics.mse, digits=6))")
+    println(io, "├─ MAE: $(round(metrics.mae, digits=6))")
+    println(io, "├─ RMSE: $(round(metrics.rmse, digits=6))")
+    println(io, "├─ R²: $(round(metrics.r_squared, digits=6))")
+    println(io, "├─ Final Loss: $(round(metrics.final_loss, digits=6))")
+    println(io, "└─ Training Time: $(round(metrics.training_time, digits=2)) seconds")
+end
+
+"""
+    Base.show(io::IO, ::MIME"text/plain", metrics::Metrics)
+
+Detailed display for Metrics objects.
+"""
+function Base.show(io::IO, ::MIME"text/plain", metrics::Metrics)
+    println(io, "Metrics:")
+    println(io, "├─ MSE: $(round(metrics.mse, digits=6))")
+    println(io, "├─ MAE: $(round(metrics.mae, digits=6))")
+    println(io, "├─ RMSE: $(round(metrics.rmse, digits=6))")
+    println(io, "├─ R²: $(round(metrics.r_squared, digits=6))")
+    println(io, "├─ Final Loss: $(round(metrics.final_loss, digits=6))")
+    println(io, "├─ Training Time: $(round(metrics.training_time, digits=2)) seconds")
+    println(io, "└─ History: $(length(keys(metrics.history))) metrics tracked")
+    for (key, values) in metrics.history
+        println(io, "   └─ $(key): $(length(values)) points")
+    end
 end 

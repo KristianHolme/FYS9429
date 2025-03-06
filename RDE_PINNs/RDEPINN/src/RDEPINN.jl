@@ -33,12 +33,13 @@ include("metrics.jl")
 include("experiment.jl")
 
 # Export main functionality
-export PDESystemConfig, ModelConfig, TrainingConfig, Metrics, Experiment
+export PDESystemConfig, ModelConfig, TrainingConfig, Metrics
+export ExperimentSetup, ExperimentResults, ExperimentDisplay
 export create_pde_system, create_neural_network, train_model
 export create_prediction_functions, predict_on_grid, generate_grid, run_simulation
 
 # Export experiment functions
-export create_experiment, run_experiment, print_experiment_summary
+export create_experiment, run_experiment, print_experiment_summary, experiment_display
 export save_experiment_plots, run_hyperparameter_sweep
 export save_experiment, load_experiment, compare_experiments
 
@@ -50,7 +51,7 @@ export fast_training_config, medium_training_config, thorough_training_config, l
 
 # Export visualization functions
 export plot_solution, plot_spacetime_slice, plot_error, plot_comparison
-export plot_metrics_over_time, plot_experiment_comparison, create_animation
+export plot_experiment_comparison, create_animation
 
 # Export metrics functions
 export calculate_metrics, compare_metrics

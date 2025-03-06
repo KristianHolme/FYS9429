@@ -12,59 +12,49 @@ using Random
 # Set random seed for reproducibility
 Random.seed!(123)
 
-println("RDEPINN Example: Solving Rotating Detonation Engine equations with Physics-Informed Neural Networks")
-println("=========================================================================================")
+@info "RDEPINN Example: Solving Rotating Detonation Engine equations with Physics-Informed Neural Networks"
 
 # Create configurations
-println("Creating configurations...")
+@info "Creating configurations..."
 pde_config = default_pde_config(tmax=1.0, u_scale=1.5)
 model_config = default_model_config(hidden_sizes=[32, 32, 32])
 training_config = fast_training_config()
 
-# Print configurations
-println("PDE Configuration: tmax=$(pde_config.rde_params.tmax), u_scale=$(pde_config.u_scale)")
-println("Model Configuration: hidden_sizes=$(model_config.hidden_sizes)")
-println("Training Configuration: iterations=$(training_config.iterations), batch_size=$(training_config.batch_size)")
-println()
+# Display configurations
+display(pde_config)
+display(model_config)
+display(training_config)
 
 # Create and run a basic experiment
-println("Running basic experiment...")
-experiment = create_experiment("basic_rde", pde_config, model_config, training_config)
-experiment = run_experiment(experiment)
-
-# Print experiment summary
-println("\nExperiment Summary:")
-print_experiment_summary(experiment)
+@info "Running basic experiment..."
+setup = create_experiment("basic_rde", pde_config, model_config, training_config)
+result_dict = run_experiment(setup)
 
 # Plots are automatically saved by the run_experiment function
-println("\nPlots have been saved to $(plotsdir("experiments", experiment.name))")
+@info "Plots have been saved to $(plotsdir("experiments", setup.name))"
 
 # Run a hyperparameter sweep on hidden layer sizes
-println("\nRunning hyperparameter sweep on hidden layer sizes...")
+@info "Running hyperparameter sweep on hidden layer sizes..."
 hidden_sizes_values = [[16, 16], [32, 32, 32], [64, 64, 64, 64]]
-experiments, comparison = run_hyperparameter_sweep(
-    experiment, 
+result_dicts, comparison = run_hyperparameter_sweep(
+    setup, 
     "hidden_sizes", 
     hidden_sizes_values, 
     experiment_name_prefix="hidden_size_sweep"
 )
 
-println("\nHyperparameter sweep results:")
-for (i, exp) in enumerate(experiments)
-    println("Model with hidden_sizes=$(exp.model_config.hidden_sizes):")
-    println("  MSE: $(round(exp.metrics.mse, digits=6))")
-    println("  Final Loss: $(round(exp.metrics.final_loss, digits=6))")
+@info "Hyperparameter sweep results:"
+for (i, dict) in enumerate(result_dicts)
+    exp_display = experiment_display(dict)
+    @info "Model $(i)" hidden_sizes=exp_display.setup.model_config.hidden_sizes mse=round(exp_display.results.metrics.mse, digits=6) final_loss=round(exp_display.results.metrics.final_loss, digits=6)
 end
 
 # Find the best model based on final loss
-best_idx = argmin([exp.metrics.final_loss for exp in experiments])
-best_experiment = experiments[best_idx]
-println("\nBest model: hidden_sizes=$(best_experiment.model_config.hidden_sizes)")
-println("  MSE: $(round(best_experiment.metrics.mse, digits=6))")
-println("  Final Loss: $(round(best_experiment.metrics.final_loss, digits=6))")
+best_idx = argmin([dict["metrics"].final_loss for dict in result_dicts])
+best_dict = result_dicts[best_idx]
+best_display = experiment_display(best_dict)
 
-println("\nExample completed successfully!")
-println("All results have been saved to:")
-println("  - Experiments: $(datadir("experiments"))")
-println("  - Plots: $(plotsdir("experiments"))")
-println("  - Sweeps: $(datadir("sweeps"))") 
+@info "Best model found" hidden_sizes=best_display.setup.model_config.hidden_sizes mse=round(best_display.results.metrics.mse, digits=6) final_loss=round(best_display.results.metrics.final_loss, digits=6)
+
+@info "Example completed successfully!"
+@info "All results have been saved to:" experiments=datadir("experiments") plots=plotsdir("experiments") sweeps=datadir("sweeps") 

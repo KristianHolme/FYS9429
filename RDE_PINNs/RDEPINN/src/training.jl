@@ -5,44 +5,65 @@ Configuration for training Physics-Informed Neural Networks for Rotating Detonat
 """
 struct TrainingConfig
     optimizer::Any
-    iterations::Int
-    batch_size::Int
-    training_strategy::Symbol  # :quasi_random or :stochastic
-    adaptive_loss::Symbol      # :minimax or :gradient_scale
-    print_interval::Int
-    callback_interval::Int
+    learning_rates::Vector{Float64}
+    iterations::Vector{Int}
+    training_strategy::NeuralPDE.AbstractTrainingStrategy
+    adaptive_loss::Union{NeuralPDE.AbstractAdaptiveLoss, Nothing}
 end
 
 """
     default_training_config(; 
-        optimizer=OptimizationOptimisers.Adam(0.01), 
-        iterations=1000, 
-        batch_size=128, 
-        training_strategy=:quasi_random,
-        adaptive_loss=:minimax,
-        print_interval=100, 
-        callback_interval=100)
+        optimizer=OptimizationOptimisers.Adam, 
+        learning_rates=[0.01, 0.001], 
+        iterations=[1000, 2000], 
+        training_strategy=QuasiRandomTraining(128),
+        adaptive_loss=MiniMaxAdaptiveLoss(64))
 
 Create a default training configuration for RDE PINN models.
 """
 function default_training_config(; 
-    optimizer=OptimizationOptimisers.Adam(0.01), 
-    iterations=1000, 
-    batch_size=128, 
-    training_strategy=:quasi_random,
-    adaptive_loss=:minimax,
-    print_interval=100, 
-    callback_interval=100)
+    optimizer=OptimizationOptimisers.Adam, 
+    learning_rates=[0.01, 0.001], 
+    iterations=[1000, 2000], 
+    training_strategy=QuasiRandomTraining(128),
+    adaptive_loss=MiniMaxAdaptiveLoss(64))
     
     return TrainingConfig(
         optimizer, 
+        learning_rates, 
         iterations, 
-        batch_size, 
         training_strategy, 
-        adaptive_loss,
-        print_interval, 
-        callback_interval
+        adaptive_loss
     )
+end
+
+"""
+    Base.show(io::IO, config::TrainingConfig)
+
+Custom display for TrainingConfig objects.
+"""
+function Base.show(io::IO, config::TrainingConfig)
+    println(io, "TrainingConfig:")
+    println(io, "├─ Optimizer: $(config.optimizer)")
+    println(io, "├─ Learning Rates: $(config.learning_rates)")
+    println(io, "├─ Iterations: $(config.iterations) (total: $(sum(config.iterations)))")
+    println(io, "├─ Training Strategy: $(typeof(config.training_strategy))")
+    println(io, "└─ Adaptive Loss: $(typeof(config.adaptive_loss))")
+end
+
+"""
+    Base.show(io::IO, ::MIME"text/plain", config::TrainingConfig)
+
+Detailed display for TrainingConfig objects.
+"""
+function Base.show(io::IO, ::MIME"text/plain", config::TrainingConfig)
+    println(io, "TrainingConfig:")
+    println(io, "├─ Optimizer: $(config.optimizer)")
+    println(io, "├─ Learning Rates: $(config.learning_rates)")
+    println(io, "├─ Iterations: $(config.iterations)")
+    println(io, "├─ Total Iterations: $(sum(config.iterations))")
+    println(io, "├─ Training Strategy: $(typeof(config.training_strategy))")
+    println(io, "└─ Adaptive Loss: $(typeof(config.adaptive_loss))")
 end
 
 """
@@ -52,13 +73,11 @@ Create a training configuration for quick testing of RDE PINNs.
 """
 function fast_training_config()
     return TrainingConfig(
-        OptimizationOptimisers.Adam(0.01), 
-        100, 
-        64, 
-        :quasi_random, 
-        :minimax,
-        10, 
-        10
+        OptimizationOptimisers.Adam, 
+        [0.01, 0.001], 
+        [500, 800], 
+        QuasiRandomTraining(64), 
+        MiniMaxAdaptiveLoss(64)
     )
 end
 
@@ -69,13 +88,11 @@ Create a medium training configuration for RDE PINNs.
 """
 function medium_training_config()
     return TrainingConfig(
-        OptimizationOptimisers.Adam(0.01), 
-        1000, 
-        128, 
-        :quasi_random, 
-        :minimax,
-        100, 
-        100
+        OptimizationOptimisers.Adam, 
+        [0.01, 0.001], 
+        [1000, 2000], 
+        QuasiRandomTraining(128), 
+        MiniMaxAdaptiveLoss(64)
     )
 end
 
@@ -86,13 +103,11 @@ Create a thorough training configuration for RDE PINNs with two-stage training.
 """
 function thorough_training_config()
     return TrainingConfig(
-        OptimizationOptimisers.Adam(0.01), 
-        3000, 
-        128, 
-        :quasi_random, 
-        :minimax,
-        100, 
-        100
+        OptimizationOptimisers.Adam, 
+        [0.01, 3e-4], 
+        [2000, 4000], 
+        QuasiRandomTraining(128), 
+        MiniMaxAdaptiveLoss(64)
     )
 end
 
@@ -103,13 +118,11 @@ Create a training configuration for extensive RDE PINN training.
 """
 function long_training_config()
     return TrainingConfig(
-        OptimizationOptimisers.Adam(0.005), 
-        5000, 
-        128, 
-        :quasi_random, 
-        :minimax,
-        500, 
-        500
+        OptimizationOptimisers.Adam, 
+        [0.01, 3e-4], 
+        [5000, 10000], 
+        QuasiRandomTraining(128), 
+        MiniMaxAdaptiveLoss(64)
     )
 end
 
@@ -119,29 +132,11 @@ end
 Train a PINN model for Rotating Detonation Engine simulation using the specified configuration.
 """
 function train_model(pde_system, model, config::TrainingConfig)
-    # Create training strategy based on configuration
-    if config.training_strategy == :quasi_random
-        strategy = QuasiRandomTraining(config.batch_size)
-    elseif config.training_strategy == :stochastic
-        strategy = StochasticTraining(config.batch_size)
-    else
-        @warn "Unknown training strategy: $(config.training_strategy). Using QuasiRandomTraining."
-        strategy = QuasiRandomTraining(config.batch_size)
-    end
-    
-    # Create adaptive loss based on configuration
-    if config.adaptive_loss == :minimax
-        adaptive_loss = MiniMaxAdaptiveLoss(config.batch_size)
-    elseif config.adaptive_loss == :gradient_scale
-        adaptive_loss = GradientScaleAdaptiveLoss(config.batch_size)
-    else
-        @warn "Unknown adaptive loss: $(config.adaptive_loss). Using MiniMaxAdaptiveLoss."
-        adaptive_loss = MiniMaxAdaptiveLoss(config.batch_size)
-    end
-    
+    @assert length(config.learning_rates) == length(config.iterations) "Learning rates and iterations must have the same length"
     # Create discretization with appropriate strategy and adaptive loss
-    discretization = PhysicsInformedNN(model, strategy, adaptive_loss=adaptive_loss)
+    discretization = PhysicsInformedNN(model, config.training_strategy, adaptive_loss=config.adaptive_loss)
     
+    prob = discretize(pde_system, discretization)
     # Create symbolic problem
     sym_prob = symbolic_discretize(pde_system, discretization)
     
@@ -150,7 +145,7 @@ function train_model(pde_system, model, config::TrainingConfig)
     bcs_inner_loss_functions = sym_prob.loss_functions.bc_loss_functions
     
     # Create progress bar
-    progressbar = ProgressUnknown("Training...", showspeed=true)
+    progressbar = Progress(sum(config.iterations), "Training...", showspeed=true)
     
     # Create callback function with progress bar
     callback = function (p, l)
@@ -161,39 +156,25 @@ function train_model(pde_system, model, config::TrainingConfig)
         ])
         return false
     end
-    
-    # Create loss function
-    loss = build_loss_function(discretization, sym_prob)
-    
     # Create training problem
-    prob = OptimizationProblem(loss, discretization.initial_params)
-    
-    # Train the model
-    res = solve(prob, config.optimizer, maxiters=config.iterations, cb=callback)
-    
-    # If thorough training is requested, do a second stage with lower learning rate
-    if config.iterations >= 3000
-        @info "First stage training completed with loss = $(res.objective)"
-        @info "Starting second stage training with lower learning rate..."
-        
-        # Create new optimizer with lower learning rate
-        second_stage_optimizer = OptimizationOptimisers.Adam(3e-4)
-        
-        # Reset progress bar
-        progressbar = ProgressUnknown("Fine-tuning...", showspeed=true)
-        
-        # Create new problem with previous solution as initial condition
+
+    # Start timing the training process
+    training_start_time = time()
+
+    opt = config.optimizer(config.learning_rates[1])
+    res = solve(prob, opt; maxiters = config.iterations[1], callback)
+    for i in 2:length(config.learning_rates)
+        opt = config.optimizer(config.learning_rates[i])
         prob = remake(prob, u0=res.u)
-        
-        # Train for additional iterations
-        res = solve(prob, second_stage_optimizer, maxiters=2000, cb=callback)
-        
-        @info "Second stage training completed with loss = $(res.objective)"
+        res = solve(prob, opt; maxiters = config.iterations[i], callback)
     end
-    
+
+    # Calculate total training time
+    training_time = time() - training_start_time
+
     finish!(progressbar)
     
-    return res, discretization, sym_prob
+    return res, discretization, sym_prob, training_time
 end
 
 """
@@ -240,15 +221,41 @@ struct TrainingResult
     result::Any
     sym_prob::Any
     discretization::Any
-    predict_u::Function
-    predict_λ::Function
     ts::Vector{Float64}
     xs::Vector{Float64}
     us::Vector{Vector{Float64}}
     λs::Vector{Vector{Float64}}
-    final_loss::Float64
     pde_losses::Vector{Float64}
     bc_losses::Vector{Float64}
+    training_time::Float64
+end
+
+"""
+    Base.show(io::IO, result::TrainingResult)
+
+Custom display for TrainingResult objects.
+"""
+function Base.show(io::IO, result::TrainingResult)
+    println(io, "TrainingResult:")
+    println(io, "├─ Grid: $(length(result.ts)) time points × $(length(result.xs)) spatial points")
+    println(io, "├─ PDE Losses: $(round.(result.pde_losses, digits=6))")
+    println(io, "├─ BC Losses: $(round.(result.bc_losses, digits=6))")
+    println(io, "└─ Training Time: $(round(result.training_time, digits=2)) seconds")
+end
+
+"""
+    Base.show(io::IO, ::MIME"text/plain", result::TrainingResult)
+
+Detailed display for TrainingResult objects.
+"""
+function Base.show(io::IO, ::MIME"text/plain", result::TrainingResult)
+    println(io, "TrainingResult:")
+    println(io, "├─ Time Domain: [$(minimum(result.ts)), $(maximum(result.ts))]")
+    println(io, "├─ Space Domain: [$(minimum(result.xs)), $(maximum(result.xs))]")
+    println(io, "├─ Grid: $(length(result.ts)) time points × $(length(result.xs)) spatial points")
+    println(io, "├─ PDE Losses: $(round.(result.pde_losses, digits=6))")
+    println(io, "├─ BC Losses: $(round.(result.bc_losses, digits=6))")
+    println(io, "└─ Training Time: $(round(result.training_time, digits=2)) seconds")
 end
 
 """
@@ -261,7 +268,7 @@ function train_and_predict(pdesystem, model_config::ModelConfig, training_config
     chains = create_neural_network(model_config, 2, 1)  # 2 inputs (t, x), 1 output per network
     
     # Train model
-    res, discretization, sym_prob = train_model(pdesystem, chains, training_config)
+    res, discretization, sym_prob, training_time = train_model(pdesystem, chains, training_config)
     
     # Create prediction functions
     predict_u, predict_λ = create_prediction_functions(discretization, res, sym_prob)
@@ -283,14 +290,12 @@ function train_and_predict(pdesystem, model_config::ModelConfig, training_config
         res,
         sym_prob,
         discretization,
-        predict_u,
-        predict_λ,
         ts,
         xs,
         us,
         λs,
-        res.objective,
         pde_losses,
-        bc_losses
+        bc_losses,
+        training_time
     )
 end 

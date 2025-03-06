@@ -6,7 +6,6 @@ Configuration for Rotating Detonation Engine (RDE) PDE system.
 struct PDESystemConfig
     rde_params::RDEParam
     u_scale::Float64
-    periodic_boundary::Bool
 end
 
 """
@@ -14,12 +13,45 @@ end
 
 Create a default PDE system configuration for Rotating Detonation Engine modeling.
 """
-function default_pde_config(; tmax=1.0, u_scale=1.5, periodic_boundary=true)
+function default_pde_config(; tmax=1.0, u_scale=1.5)
     return PDESystemConfig(
         RDEParam{Float64}(tmax=tmax),
-        u_scale,
-        periodic_boundary
-    )
+        u_scale)
+end
+
+"""
+    Base.show(io::IO, config::PDESystemConfig)
+
+Custom display for PDESystemConfig objects.
+"""
+function Base.show(io::IO, config::PDESystemConfig)
+    println(io, "PDESystemConfig:")
+    println(io, "├─ u_scale: $(config.u_scale)")
+    println(io, "└─ tmax: $(config.rde_params.tmax)")
+end
+
+"""
+    Base.show(io::IO, ::MIME"text/plain", config::PDESystemConfig)
+
+Detailed display for PDESystemConfig objects.
+"""
+function Base.show(io::IO, ::MIME"text/plain", config::PDESystemConfig)
+    println(io, "PDESystemConfig:")
+    println(io, "├─ u_scale: $(config.u_scale)")
+    println(io, "├─ tmax: $(config.rde_params.tmax)")
+    println(io, "└─ RDE Parameters:")
+    println(io, "   ├─ q_0: $(config.rde_params.q_0)")
+    println(io, "   ├─ ν_1: $(config.rde_params.ν_1)")
+    println(io, "   ├─ ν_2: $(config.rde_params.ν_2)")
+    println(io, "   ├─ L: $(config.rde_params.L)")
+    println(io, "   ├─ u_c: $(config.rde_params.u_c)")
+    println(io, "   ├─ α: $(config.rde_params.α)")
+    println(io, "   ├─ u_0: $(config.rde_params.u_0)")
+    println(io, "   ├─ n: $(config.rde_params.n)")
+    println(io, "   ├─ s: $(config.rde_params.s)")
+    println(io, "   ├─ u_p: $(config.rde_params.u_p)")
+    println(io, "   ├─ k_param: $(config.rde_params.k_param)")
+    println(io, "   └─ ϵ: $(config.rde_params.ϵ)")
 end
 
 """
@@ -65,15 +97,12 @@ function create_pde_system(config::PDESystemConfig)
     # Define boundary conditions
     bcs = [
         u(0, x) ~ RDE.default_u(x) * config.u_scale,
-        λ(0, x) ~ RDE.default_λ(x)
+        λ(0, x) ~ RDE.default_λ(x),
+        u(t, 0) ~ u(t, L),
+        λ(t, 0) ~ λ(t, L)
     ]
     
-    # Add periodic boundary conditions if specified
-    if config.periodic_boundary
-        push!(bcs, u(t, 0) ~ u(t, L))
-        push!(bcs, λ(t, 0) ~ λ(t, L))
-    end
-    
+
     # Define domains
     domains = [t ∈ Interval(0.0, tmax), x ∈ Interval(0.0, L)]
     
