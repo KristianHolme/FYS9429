@@ -7,6 +7,7 @@ using Zygote
 using LinearAlgebra
 using Random
 using OptimizationOptimisers
+using CairoMakie
 ##
 RDEParams = RDEParam(tmax = 400.0f0)
 env = RDEEnv(RDEParams,
@@ -60,12 +61,12 @@ ax = Axis(fig[1, 1], xlabel="Epoch", ylabel="Loss", xscale=log10, yscale=log10)
 lines!(ax, losses)
 fig
 ## Test the model
-RDEParams = RDEParam(tmax = 2.0)
+RDEParams = RDEParam(tmax = 800.0)
 env = RDEEnv(RDEParams,
-    dt = 0.01,
+    dt = 0.5,
     observation_strategy=SectionedStateObservation(minisections=32))
 sim_test_data = run_policy(ConstantRDEPolicy(env), env)
-test_observations = sim_test_data.observations[100:end]
+test_observations = sim_test_data.observations[800:end]
 
 test_data = zeros(Float32, 32, 2, length(test_observations))
 for i in eachindex(test_observations)
@@ -78,9 +79,10 @@ output_data, st = Lux.apply(fno, test_data[:,:,1:end-1], ps, st)
 ##
 fig = Figure()
 ax_u = Axis(fig[1, 1], xlabel="Time", ylabel="u")
-ax_λ = Axis(fig[1, 2], xlabel="Time", ylabel="λ")
+ax_λ = Axis(fig[2, 1], xlabel="Time", ylabel="λ")
 ls = []
-for i in [1, 50, 100]
+n_test = length(test_observations)
+for i in [1, n_test÷3, n_test÷2]
     u_true = lines!(ax_u, test_data[:, 1, i+1], color=:red, linestyle=:dash)
     u_pred = lines!(ax_u, output_data[:, 1, i], color=:blue)
     λ_true = lines!(ax_λ, test_data[:, 2, i+1], color=:red, linestyle=:dash)
@@ -92,5 +94,5 @@ for i in [1, 50, 100]
         push!(ls, λ_pred)
     end
 end
-Legend(fig[2,:], ls, ["True u", "Predicted u", "True λ", "Predicted λ"], vertical=false, tellheight=false)
+Legend(fig[:,2], ls[1:2], ["True", "Predicted"], vertical=true, tellheight=false)
 fig
