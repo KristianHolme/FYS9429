@@ -99,11 +99,12 @@ function create_experiment(name, pde_config, model_config, training_config)
 end
 
 """
-    run_experiment(setup::ExperimentSetup)
+    run_experiment(setup::ExperimentSetup; skip_plots=false)
 
-Run a Rotating Detonation Engine PINN experiment with the specified configuration.
+Run a Rotating Detonation Engine PINN experiment.
+If skip_plots is true, plots will not be saved (useful when running as part of a sweep).
 """
-function run_experiment(setup::ExperimentSetup)
+function run_experiment(setup::ExperimentSetup; skip_plots=false)
     # Create temporary variables for @dict
     name = setup.name
     u_scale = setup.pde_config.u_scale
@@ -155,8 +156,8 @@ function run_experiment(setup::ExperimentSetup)
         
         metrics = calculate_metrics(predictions_flat, targets_flat, res.objective, loss_history, training_time)
         
-        # Store results and predictions
-        predictions = Dict{Symbol, Any}(
+        # Store predictions for visualization
+        predictions = Dict(
             :ts => ts_sim,
             :xs => xs_sim,
             :us => us,
@@ -167,8 +168,7 @@ function run_experiment(setup::ExperimentSetup)
         
         # Return a dictionary with all the results
         @info "Experiment completed" mse=round(metrics.mse, digits=6) final_loss=round(metrics.final_loss, digits=6) training_time=round(training_time, digits=2)
-        
-        return merge(params, Dict(
+        data_dict = merge(params, Dict(
             "metrics" => metrics,
             "predictions" => predictions,
             "minimizers" => minimizers,
@@ -180,24 +180,39 @@ function run_experiment(setup::ExperimentSetup)
             "r_squared" => metrics.r_squared,
             "training_time" => training_time,
             ))
+        @show keys(data_dict)
+        return data_dict
     end
     
-    
-        
+    # Create ExperimentResults object
+    @show keys(result_dict)
     results = ExperimentResults(result_dict)
-    save_experiment_plots(setup, results)
+    
+    # Save plots unless skipped
+    if !skip_plots
+        save_experiment_plots(setup, results)
+    end
+    
+    # Create result dictionary for easy access
+    result_dict = Dict(
+        "name" => setup.name,
+        "setup" => setup,
+        "results" => results,
+        "metrics" => results.metrics
+    )
     
     return result_dict
 end
 
 """
-    save_experiment_plots(setup::ExperimentSetup, results::ExperimentResults)
+    save_experiment_plots(setup::ExperimentSetup, results::ExperimentResults; custom_dir=nothing)
 
 Save plots for a Rotating Detonation Engine experiment.
+If custom_dir is provided, plots will be saved in that directory instead of the default location.
 """
-function save_experiment_plots(setup::ExperimentSetup, results::ExperimentResults)
+function save_experiment_plots(setup::ExperimentSetup, results::ExperimentResults; custom_dir=nothing)
     # Create plot directory
-    plot_dir = plotsdir("experiments", setup.name)
+    plot_dir = isnothing(custom_dir) ? plotsdir("experiments", setup.name) : custom_dir
     mkpath(plot_dir)
     
     @info "Generating plots for experiment: $(setup.name)"
@@ -219,29 +234,39 @@ function save_experiment_plots(setup::ExperimentSetup, results::ExperimentResult
         results.predictions[:λs_sim],
         title="$(setup.name) - Error Analysis"
     )
-    safesave(joinpath(plot_dir, "error.png"), fig)
-    
+    safesave(joinpath(plot_dir, "error_analysis.png"), fig)
     
     @info "Plots saved to: $(plot_dir)"
-    
-    return plot_dir
 end
 
 """
-    compare_experiments(result_dicts; metrics=["mse", "final_loss", "training_time"])
+    compare_experiments(result_dicts; metrics=["mse", "mae", "final_loss", "training_time"])
 
-Compare multiple Rotating Detonation Engine experiments.
+Compare multiple Rotating Detonation Engine experiments based on specified metrics.
+If sweep_dir is provided, comparison plots will be saved in that directory.
 """
-function compare_experiments(result_dicts; metrics=["mse", "final_loss", "training_time"])
-    names = [dict["name"] for dict in result_dicts]
-    metrics_list = [dict["metrics"] for dict in result_dicts]
+function compare_experiments(result_dicts; 
+                            metrics=["mse", "mae", "final_loss", "training_time"],
+                            sweep_dir=nothing)
+    # Extract metrics from each experiment
+    metrics_list = []
+    names = []
     
-    # Compare metrics
+    for dict in result_dicts
+        push!(metrics_list, dict["metrics"])
+        push!(names, dict["name"])
+    end
+    
     @info "Comparing metrics across $(length(result_dicts)) experiments" metrics=metrics
     comparison = compare_metrics(metrics_list, names)
     
     # Create comparison plots
-    plot_dir = plotsdir("comparisons")
+    if isnothing(sweep_dir)
+        plot_dir = plotsdir("comparisons")
+    else
+        # Create a metrics_plots directory within the sweep directory
+        plot_dir = joinpath(sweep_dir, "metrics_plots")
+    end
     mkpath(plot_dir)
     
     for metric in metrics
@@ -268,6 +293,16 @@ function run_hyperparameter_sweep(base_setup::ExperimentSetup, param_name, param
     result_dicts = []
     
     @info "Starting hyperparameter sweep" parameter=param_name values=param_values
+    
+    # Create sweep directory for plots - single folder for all plots
+    sweep_plots_dir = plotsdir("sweeps", "$(experiment_name_prefix)_$(param_name)")
+    mkpath(sweep_plots_dir)
+    
+    # Create specific folders for comparison and error analysis plots
+    comparison_dir = joinpath(sweep_plots_dir, "comparison_plots")
+    error_dir = joinpath(sweep_plots_dir, "error_analysis_plots")
+    mkpath(comparison_dir)
+    mkpath(error_dir)
     
     for (i, value) in enumerate(param_values)
         # Create a new experiment with the modified parameter
@@ -349,14 +384,37 @@ function run_hyperparameter_sweep(base_setup::ExperimentSetup, param_name, param
         
         # Run the experiment
         @info "Running experiment $(i)/$(length(param_values))" experiment_name=experiment_name parameter=param_name value=value
-        result_dict = run_experiment(setup)
+        
+        # Run the experiment but don't save plots yet
+        result_dict = run_experiment(setup, skip_plots=true)
+        
+        # Save plots directly to the appropriate folders with parameter value in filename
+        # Create comparison plot
+        @info "Creating comparison plot for parameter value: $(value)"
+        fig = plot_comparison(result_dict["results"].predictions, 
+            title="$(experiment_name) - RDE PINN vs Simulation"
+        )
+        safesave(joinpath(comparison_dir, "comparison_$(param_name)_$(value).png"), fig)
+        
+        # Create error analysis plot
+        @info "Creating error analysis plot for parameter value: $(value)"
+        fig = plot_error(
+            result_dict["results"].predictions[:ts],
+            result_dict["results"].predictions[:xs],
+            result_dict["results"].predictions[:us],
+            result_dict["results"].predictions[:λs],
+            result_dict["results"].predictions[:us_sim],
+            result_dict["results"].predictions[:λs_sim],
+            title="$(experiment_name) - Error Analysis"
+        )
+        safesave(joinpath(error_dir, "error_analysis_$(param_name)_$(value).png"), fig)
         
         push!(result_dicts, result_dict)
     end
     
     # Compare experiments
     @info "Comparing experiment results..."
-    comparison = compare_experiments(result_dicts)
+    comparison = compare_experiments(result_dicts, sweep_dir=sweep_plots_dir)
     
     # Save sweep results
     sweep_dir = datadir("sweeps", "$(experiment_name_prefix)_$(param_name)")
@@ -377,7 +435,8 @@ function run_hyperparameter_sweep(base_setup::ExperimentSetup, param_name, param
         safe = true
     )
     
-    @info "Hyperparameter sweep completed" sweep_dir=sweep_dir
+    @info "Hyperparameter sweep completed" sweep_dir=sweep_dir sweep_plots_dir=sweep_plots_dir
+    @info "Plots saved to:" comparison_plots=comparison_dir error_plots=error_dir metrics_plots=joinpath(sweep_plots_dir, "metrics_plots")
     
     return result_dicts, comparison
 end
@@ -452,46 +511,6 @@ function print_experiment_summary(result_dict::Dict)
     )
     
     print_experiment_summary(setup, results)
-end
-
-"""
-    save_experiment(setup::ExperimentSetup, results::ExperimentResults)
-
-Save a Rotating Detonation Engine experiment to disk using DrWatson.
-"""
-function save_experiment(setup::ExperimentSetup, results::ExperimentResults)
-    # Create temporary variables for @dict
-    name = setup.name
-    u_scale = setup.pde_config.u_scale
-    hidden_sizes = setup.model_config.hidden_sizes
-    iterations = setup.training_config.iterations[end]  # Use the final iterations value
-    
-    # Create parameters dictionary for filename
-    parameters = @dict name u_scale hidden_sizes iterations
-    
-    @info "Saving experiment: $(name)"
-    
-    # Create a dictionary with all experiment data
-    data = Dict(
-        :name => setup.name,
-        :pde_config => setup.pde_config,
-        :model_config => setup.model_config,
-        :training_config => setup.training_config,
-        :metrics => results.metrics,
-        :predictions => results.predictions,
-        :timestamp => results.timestamp
-    )
-    
-    # Save with DrWatson's tagsave
-    experiment_file = tagsave(
-        datadir("experiments", savename(parameters, "jld2")),
-        data;
-        safe = true
-    )
-    
-    @info "Experiment saved to: $(experiment_file)"
-    
-    return experiment_file
 end
 
 """
@@ -584,20 +603,11 @@ Create an ExperimentDisplay object from a result dictionary.
 """
 function experiment_display(result_dict::Dict)
     # Create ExperimentSetup from dictionary
-    setup = ExperimentSetup(
-        result_dict["name"],
-        result_dict["pde_config"],
-        result_dict["model_config"],
-        result_dict["training_config"]
-    )
+    setup = result_dict["setup"]
     
     # Create ExperimentResults from dictionary
-    results = ExperimentResults(
-        result_dict["metrics"],
-        result_dict["predictions"],
-        result_dict["minimizers"],
-        result_dict["timestamp"]
-    )
+    @show result_dict
+    results = result_dict["results"]
     
     return ExperimentDisplay(setup, results)
 end 

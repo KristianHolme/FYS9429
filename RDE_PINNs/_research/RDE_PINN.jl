@@ -39,7 +39,7 @@ eqs = [
 
 bcs = [
     u(0, x) ~ RDE.default_u(x)*1.5,
-    λ(0, x) ~ RDE.default_λ(x),
+    λ(0, x) ~ 0.5,
     u(t, 0) ~ u(t, L),
     λ(t, 0) ~ λ(t, L)
 ]
@@ -48,13 +48,14 @@ domains = [t ∈ Interval(0.0, tmax), x ∈ Interval(0.0, L)]
 
 # Neural network
 input_ = length(domains)
-n = 64
-chain = [Chain(Dense(input_, n, tanh), Dense(n, n, tanh), Dense(n, n, tanh), Dense(n, n, tanh), Dense(n, 1)) for _ in 1:2]
+n = 16
+layers = 4
+chain = [Chain(Dense(input_, n, tanh), [Dense(n, n, tanh) for i in layers]..., Dense(n, 1)) for _ in 1:2]
 
 # strategy = StochasticTraining(128)
-strategy = QuasiRandomTraining(128)
-# discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = GradientScaleAdaptiveLoss(64))
-discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = MiniMaxAdaptiveLoss(64))
+strategy = QuasiRandomTraining(2^14)
+discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = GradientScaleAdaptiveLoss(64))
+# discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = MiniMaxAdaptiveLoss(64))
 
 
 @named pdesystem = PDESystem(eqs, bcs, domains, [t, x], [u(t, x), λ(t, x)])
@@ -64,20 +65,46 @@ sym_prob = symbolic_discretize(pdesystem, discretization)
 pde_inner_loss_functions = sym_prob.loss_functions.pde_loss_functions
 bcs_inner_loss_functions = sym_prob.loss_functions.bc_loss_functions
 
+
+losses = []
+pde_losses = []
+bcs_losses = []
 progressbar = ProgressUnknown("Training...", showspeed = true)
 callback = function (p, l)
+    push!(losses, l)
+    push!(pde_losses, map(l_ -> l_(p.u), pde_inner_loss_functions))
+    push!(bcs_losses, map(l_ -> l_(p.u), bcs_inner_loss_functions))
     next!(progressbar, showvalues = [(:loss, l), (:pde_losses, map(l_ -> l_(p.u), pde_inner_loss_functions)), (:bcs_losses, map(l_ -> l_(p.u), bcs_inner_loss_functions))])
     return false
 end
 ##
-opt = OptimizationOptimisers.Adam(0.01)
-res = solve(prob, opt; maxiters = 1000, callback)
+opt = OptimizationOptimisers.Adam(3e-4)
+opt = BFGS(linesearch = BackTracking())
+res = solve(prob, opt; maxiters = 200, callback);
 @info "Loss = $(res.objective)"
 ## Train more
 opt = OptimizationOptimisers.Adam(3e-4)
+opt = OptimizationOptimJL.LBFGS()
 prob = remake(prob, u0 = res.u)
 res = solve(prob, opt; maxiters = 2_000, callback);
 @info "Loss = $(res.objective)"
+## Plot losses
+pde_u_losses = stack(pde_losses)[1,:]
+pde_λ_losses = stack(pde_losses)[2,:]
+ic_u_losses = stack(bcs_losses)[1,:]
+ic_λ_losses = stack(bcs_losses)[2,:]
+fig = Figure()
+ax_losses = Axis(fig[1, 1], title = "Losses", xlabel = "Iteration", ylabel = "Loss", xscale = log10, yscale = log10)
+lines!(ax_losses, losses)
+ax_pde_losses = Axis(fig[1, 2], title = "PDE Losses", xlabel = "Iteration", ylabel = "Loss", xscale = log10, yscale = log10)
+lines!(ax_pde_losses, pde_u_losses, label = "u")
+lines!(ax_pde_losses, pde_λ_losses, label = "λ")
+ax_bcs_losses = Axis(fig[2, 1], title = "BCs Losses", xlabel = "Iteration", ylabel = "Loss", xscale = log10, yscale = log10)
+u_line = lines!(ax_bcs_losses, ic_u_losses, label = "u")
+λ_line = lines!(ax_bcs_losses, ic_λ_losses, label = "λ")
+Legend(fig[2,2], [u_line, λ_line], ["u", "λ"], tellwidth = false, tellheight = false)
+fig
+
 ## post-processing and plotting
 phi = discretization.phi
 ts, xs = [infimum(d.domain):0.01:supremum(d.domain) for d in domains]

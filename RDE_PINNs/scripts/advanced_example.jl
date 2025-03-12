@@ -24,7 +24,7 @@ model_configs = [
     medium_model_config(),
     large_model_config(),
     ModelConfig([32, 64, 32], tanh, :glorot_uniform),
-    ModelConfig([16, 32, 64, 32, 16], tanh, :glorot_uniform)
+    ModelConfig([64, 16, 4, 16, 64], tanh, :glorot_uniform)
 ]
 
 model_names = [
@@ -41,7 +41,6 @@ for (i, (config, name)) in enumerate(zip(model_configs, model_names))
     println("Running experiment $i/$(length(model_configs)): $name architecture")
     experiment = create_experiment("architecture_$name", pde_config, config, training_config)
     experiment = run_experiment(experiment)
-    save_experiment(experiment)
     push!(model_experiments, experiment)
 end
 
@@ -50,12 +49,12 @@ println("\nComparing model architectures:")
 comparison = compare_experiments(model_experiments, metrics=["mse", "final_loss", "rmse"])
 
 # Find the best model based on MSE
-best_model_idx = argmin([exp.metrics.mse for exp in model_experiments])
+best_model_idx = argmin([exp["metrics"].mse for exp in model_experiments])
 best_model_experiment = model_experiments[best_model_idx]
 println("\nBest model architecture: $(model_names[best_model_idx])")
-println("  MSE: $(round(best_model_experiment.metrics.mse, digits=6))")
-println("  RMSE: $(round(best_model_experiment.metrics.rmse, digits=6))")
-println("  Final Loss: $(round(best_model_experiment.metrics.final_loss, digits=6))")
+println("  MSE: $(round(best_model_experiment["metrics"].mse, digits=6))")
+println("  RMSE: $(round(best_model_experiment["metrics"].rmse, digits=6))")
+println("  Final Loss: $(round(best_model_experiment["metrics"].final_loss, digits=6))")
 
 # Save comparison figure
 fig = plot_experiment_comparison(

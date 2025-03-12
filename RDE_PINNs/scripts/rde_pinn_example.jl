@@ -13,7 +13,7 @@ using Random
 Random.seed!(123)
 
 @info "RDEPINN Example: Solving Rotating Detonation Engine equations with Physics-Informed Neural Networks"
-
+##
 # Create configurations
 @info "Creating configurations..."
 pde_config = default_pde_config(tmax=1.0, u_scale=1.5)
@@ -33,9 +33,9 @@ result_dict = run_experiment(setup)
 # Plots are automatically saved by the run_experiment function
 @info "Plots have been saved to $(plotsdir("experiments", setup.name))"
 
-# Run a hyperparameter sweep on hidden layer sizes
+## Run a hyperparameter sweep on hidden layer sizes
 @info "Running hyperparameter sweep on hidden layer sizes..."
-hidden_sizes_values = [[16, 16], [32, 32, 32], [64, 64, 64, 64]]
+hidden_sizes_values = [[16, 16], ones(Int64, 16)*16, [64, 64]]
 result_dicts, comparison = run_hyperparameter_sweep(
     setup, 
     "hidden_sizes", 
