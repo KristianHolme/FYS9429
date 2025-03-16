@@ -22,8 +22,16 @@ policies = [ConstantRDEPolicy(env),
  ScaledPolicy(SinusoidalRDEPolicy(env, w_1=0f0, w_2=0.5f0), 0.5f0),
  ScaledPolicy(RandomRDEPolicy(env), 0.5f0),
  ScaledPolicy(RandomRDEPolicy(env), 0.2f0),
+ StepwiseRDEPolicy(env, [20.0f0, 100.0f0, 200.0f0, 350.0f0], 
+        [0.64f0, 0.86f0, 0.64f0, 0.96f0]),
  load_best_policy("transition_rl_8", project_path=joinpath(homedir(), "Code", "DRL_RDE"))[1]
 ]
+##
+policy = policies[end]
+policy.py_policy.action_space
+policy.py_policy.predict(rand(Float32, 66), deterministic=true)
+policy.py_policy
+##
 data = []
 n_runs = 10
 prog = Progress(n_runs*length(policies), "Collecting data...")
