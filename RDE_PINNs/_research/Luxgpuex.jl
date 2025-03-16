@@ -1,5 +1,6 @@
-using Lux, Optimisers, Random, Statistics, CairoMakie
+using Lux, Optimisers, Random, Statistics, CairoMakie, Zygote
 using LuxCUDA
+using ProgressMeter
 function generate_data(rng::AbstractRNG)
     x = reshape(collect(range(-2.0f0, 2.0f0, 128)), (1, 128))
     y = evalpoly.(x, ((0, -2, 1),)) .+ randn(rng, Float32, (1, 128)) .* 0.1f0
@@ -49,7 +50,7 @@ function main(tstate::Training.TrainState, vjp, data, epochs)
     return tstate
 end
 
-tstate = main(tstate, vjp_rule, (x, y), 250)
+tstate = main(tstate, vjp_rule, (x, y), 2500)
 
 y_pred, st = Lux.apply(model, x |> gdev, ps, st) |> cdev
 

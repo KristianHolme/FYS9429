@@ -2,12 +2,14 @@ using DRL_RDE_utils
 using ProgressMeter
 using NeuralOperators
 using Lux
+using LuxCUDA
 using Optimisers
 using Zygote
 using LinearAlgebra
 using Random
 using OptimizationOptimisers
 using CairoMakie
+using JLD2
 using Statistics
 ##
 RDEParams = RDEParam(tmax = 400.0f0)
@@ -19,7 +21,8 @@ N = RDEParams.N
 policies = [ConstantRDEPolicy(env), 
  ScaledPolicy(SinusoidalRDEPolicy(env, w_1=0f0, w_2=0.5f0), 0.5f0),
  ScaledPolicy(RandomRDEPolicy(env), 0.5f0),
- load_best_policy("transition_rl_8")
+ ScaledPolicy(RandomRDEPolicy(env), 0.2f0),
+ load_best_policy("transition_rl_8", project_path=joinpath(homedir(), "Code", "DRL_RDE"))[1]
 ]
 data = []
 n_runs = 10
@@ -28,50 +31,44 @@ for policy in policies, i in 1:n_runs
     sim_data = run_policy(policy, env)
     n_data = length(sim_data.states)
 
-    raw_data = zeros(Float32, N, 2, n_data)
+    raw_data = zeros(Float32, N, 3, n_data)
     x_data = @view raw_data[:,:,1:end-1]
-    y_data = @view raw_data[:,:,2:end]
+    y_data = @view raw_data[:,1:2,2:end]
 
     for i in eachindex(sim_data.observations)
         obs = sim_data.states[i]
         raw_data[:, 1, i] = obs[1:N]
         raw_data[:, 2, i] = obs[N+1:2N]
+        raw_data[:, 3, i] .= sim_data.u_ps[i]
     end
     push!(data, (x_data, y_data))
     next!(prog, showvalues=[("Collected data sets for $(typeof(policy))", i)])
 end
 
-fno = FourierNeuralOperator(gelu; chs=(2, 64, 64, 128, 2), modes=(32,), permuted=Val(true))
-
-rng = Random.default_rng()
-ps, st = Lux.setup(rng, fno);
 
 function train!(model, ps, st, data; lr = 3f-4, epochs=10, losses=[], dev=cpu_device(), AD=AutoZygote())
     tstate = Training.TrainState(model, ps, st, OptimizationOptimisers.Adam(lr))
     p = Progress(epochs*length(data))
     for _ in 1:epochs, (x, y) in dev(data)
         _, loss, _, tstate = Training.single_train_step!(AD, MSELoss(), (x, y),
-            tstate)
+        tstate)
         push!(losses, loss)
         next!(p, showvalues=[("Loss", loss)])
     end
     return losses
 end
 
-time_cpu = @time losses = train!(fno, ps, st, data; epochs=100)
-using JLD2
 
 # Save the model parameters and state
-@save "fno_model.jld2" fno ps st
+# @save "fno_model.jld2" fno ps st
 
 ## GPU training
-using LuxCUDA
-
+rng = Random.default_rng()
 const cdev = cpu_device()
 const gdev = gpu_device()
 # const xdev = reactant_device()
 
-fno_gpu = FourierNeuralOperator(gelu; chs=(2, 64, 64, 128, 2), modes=(16,), permuted=Val(true))
+fno_gpu = FourierNeuralOperator(gelu; chs=(3, 64, 64, 128, 2), modes=(16,), permuted=Val(true))
 
 ps_gpu, st_gpu = Lux.setup(rng, fno_gpu) |> gdev;
 @time losses_gpu = train!(fno_gpu, ps_gpu, st_gpu, data; epochs=100, dev=gdev)
@@ -96,16 +93,18 @@ fig
 ## Test the model
 RDEParams = RDEParam(tmax = 800.0)
 env = RDEEnv(RDEParams,
-    dt = 0.5,
+    dt = 1.0,
     observation_strategy=SectionedStateObservation(minisections=32))
-sim_test_data = run_policy(ConstantRDEPolicy(env), env)
-test_states = sim_test_data.states[800:end]
+sim_test_data = run_policy(ScaledPolicy(RandomRDEPolicy(env), 0.2f0), env)
+plot_shifted_history(sim_test_data, env.prob.x)
+test_states = sim_test_data.states[400:end]
 
-test_data = zeros(Float32, N, 2, length(test_states))
+test_data = zeros(Float32, N, 3, length(test_states))
 for i in eachindex(test_states)
     obs = test_states[i]
     test_data[:, 1, i] = obs[1:N]
     test_data[:, 2, i] = obs[N+1:2N]
+    test_data[:, 3, i] .= sim_test_data.u_ps[i]
 end
 
 output_data, st = Lux.apply(fno_gpu, test_data[:,:,1:end-1] |> gdev, ps_gpu, st_gpu) |> cdev
