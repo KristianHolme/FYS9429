@@ -1,4 +1,5 @@
 using Lux, Optimisers, Random, Statistics, CairoMakie, Zygote
+using Optimisers: Adam
 using LuxCUDA
 using ProgressMeter
 function generate_data(rng::AbstractRNG)

@@ -1,10 +1,15 @@
 using NeuralPDE, Lux, ModelingToolkit, Optimization, OptimizationOptimJL, LineSearches,
 OptimizationOptimisers
+using ComponentArrays
 using ModelingToolkit: Interval, infimum, supremum
 using RDE, RDE_Env
 using CairoMakie
 using ProgressMeter
 using Random
+using LuxCUDA
+using CUDA
+##
+CUDA.allowscalar(true)
 ##
 @parameters t, x
 @variables u(..), λ(..)
@@ -46,15 +51,21 @@ bcs = [
 
 domains = [t ∈ Interval(0.0, tmax), x ∈ Interval(0.0, L)]
 
-# Neural network
+## Neural network
+rng = Random.default_rng()
+gdev = gpu_device(2)
+cdev = cpu_device()
 input_ = length(domains)
-n = 16
-layers = 4
+n = 64
+layers = 8
 chain = [Chain(Dense(input_, n, tanh), [Dense(n, n, tanh) for i in layers]..., Dense(n, 1)) for _ in 1:2]
+# ps = Lux.setup(rng, chain)[1] .|> ComponentArray .|> gdev
+ps = Lux.setup(rng, chain)[1]
+
 
 # strategy = StochasticTraining(128)
 strategy = QuasiRandomTraining(2^14)
-discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = GradientScaleAdaptiveLoss(64))
+discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = GradientScaleAdaptiveLoss(64), init_params = ps)
 # discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = MiniMaxAdaptiveLoss(64))
 
 
@@ -75,11 +86,12 @@ callback = function (p, l)
     push!(pde_losses, map(l_ -> l_(p.u), pde_inner_loss_functions))
     push!(bcs_losses, map(l_ -> l_(p.u), bcs_inner_loss_functions))
     next!(progressbar, showvalues = [(:loss, l), (:pde_losses, map(l_ -> l_(p.u), pde_inner_loss_functions)), (:bcs_losses, map(l_ -> l_(p.u), bcs_inner_loss_functions))])
+    # next!(progressbar, showvalues = [(:loss, l)])
     return false
 end
 ##
 opt = OptimizationOptimisers.Adam(3e-4)
-opt = BFGS(linesearch = BackTracking())
+# opt = BFGS(linesearch = BackTracking())
 res = solve(prob, opt; maxiters = 200, callback);
 @info "Loss = $(res.objective)"
 ## Train more

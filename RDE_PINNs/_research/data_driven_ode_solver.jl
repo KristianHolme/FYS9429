@@ -92,7 +92,7 @@ ps, st = Lux.setup(rng, fno) |> gdev;
 @time losses = train!(fno, ps, st, data; epochs=100, dev=gdev, lr=0.001f0)
 ##more training
 @time losses = train!(fno, ps, st, data;
-     losses=losses, epochs=100, dev=gdev, lr=3f-4)
+     losses=losses, epochs=100, dev=gdev, lr=3f-5)
 
 ##
 fig = Figure()
@@ -105,7 +105,7 @@ upper = [quantile(losses[max(1,i-window_size):i], 0.95) for i in 1:length(losses
 lower = [quantile(losses[max(1,i-window_size):i], 0.05) for i in 1:length(losses)]
 
 # Plot bands and smoothed line
-band!(ax, 1:length(losses_gpu), lower, upper, color=(:blue, 0.2))
+band!(ax, 1:length(losses), lower, upper, color=(:blue, 0.2))
 lines!(ax, smoothed, color=:blue, linewidth=2)
 fig
 ## Test the model
@@ -125,7 +125,7 @@ for i in eachindex(test_states)
     test_data[:, 3, i] .= sim_test_data.u_ps[i]
 end
 
-output_data, st = Lux.apply(fno, test_data[:,:,1:end-1] |> gdev, ps, st) |> cdev
+@time output_data, st = Lux.apply(fno, test_data[:,:,1:end-1] |> gdev, ps, st) |> cdev
 ##
 fig = Figure()
 ax_u = Makie.Axis(fig[1, 1], xlabel="Time", ylabel="u")
