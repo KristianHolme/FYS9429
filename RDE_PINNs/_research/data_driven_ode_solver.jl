@@ -22,9 +22,18 @@ policies = [ConstantRDEPolicy(env),
  ScaledPolicy(SinusoidalRDEPolicy(env, w_1=0f0, w_2=0.5f0), 0.5f0),
  ScaledPolicy(RandomRDEPolicy(env), 0.5f0),
  ScaledPolicy(RandomRDEPolicy(env), 0.2f0),
+ ScaledPolicy(RandomRDEPolicy(env), 0.1f0),
+ ScaledPolicy(RandomRDEPolicy(env), 0.05f0),
  StepwiseRDEPolicy(env, [20.0f0, 100.0f0, 200.0f0, 350.0f0], 
         [0.64f0, 0.86f0, 0.64f0, 0.96f0]),
- load_best_policy("transition_rl_8", project_path=joinpath(homedir(), "Code", "DRL_RDE"))[1]
+ load_best_policy("transition_rl_9", project_path=joinpath(homedir(), "Code", "DRL_RDE"),
+    filter_fn=df -> df.target_shock_count == 1)[1],
+ load_best_policy("transition_rl_9", project_path=joinpath(homedir(), "Code", "DRL_RDE"),
+    filter_fn=df -> df.target_shock_count == 2)[1],
+ load_best_policy("transition_rl_9", project_path=joinpath(homedir(), "Code", "DRL_RDE"),
+    filter_fn=df -> df.target_shock_count == 3)[1],
+ load_best_policy("transition_rl_9", project_path=joinpath(homedir(), "Code", "DRL_RDE"),
+    filter_fn=df -> df.target_shock_count == 4)[1]
 ]
 ##
 policy = policies[end]
@@ -33,7 +42,7 @@ policy.py_policy.predict(rand(Float32, 66), deterministic=true)
 policy.py_policy
 ##
 data = []
-n_runs = 10
+n_runs = 16
 prog = Progress(n_runs*length(policies), "Collecting data...")
 for policy in policies, i in 1:n_runs
     sim_data = run_policy(policy, env)
@@ -76,13 +85,14 @@ const cdev = cpu_device()
 const gdev = gpu_device()
 # const xdev = reactant_device()
 
-fno_gpu = FourierNeuralOperator(gelu; chs=(3, 64, 64, 128, 2), modes=(16,), permuted=Val(true))
+fno = FourierNeuralOperator(gelu; chs=(3, 128, 128, 128, 128, 2), modes=(32,), permuted=Val(true))
 
-ps_gpu, st_gpu = Lux.setup(rng, fno_gpu) |> gdev;
-@time losses_gpu = train!(fno_gpu, ps_gpu, st_gpu, data; epochs=100, dev=gdev)
+ps, st = Lux.setup(rng, fno) |> gdev;
+
+@time losses = train!(fno, ps, st, data; epochs=100, dev=gdev, lr=0.001f0)
 ##more training
-@time losses_gpu = train!(fno_gpu, ps_gpu, st_gpu, data;
-     losses=losses_gpu, epochs=100, dev=gdev, lr=3f-4)
+@time losses = train!(fno, ps, st, data;
+     losses=losses, epochs=100, dev=gdev, lr=3f-4)
 
 ##
 fig = Figure()
@@ -90,9 +100,9 @@ ax = Makie.Axis(fig[1, 1], xlabel="Epoch", ylabel="Loss", xscale=log10, yscale=l
 
 # Calculate smoothed line and confidence bands
 window_size = 50
-smoothed = [mean(losses_gpu[max(1,i-window_size):i]) for i in 1:length(losses_gpu)]
-upper = [quantile(losses_gpu[max(1,i-window_size):i], 0.95) for i in 1:length(losses_gpu)]
-lower = [quantile(losses_gpu[max(1,i-window_size):i], 0.05) for i in 1:length(losses_gpu)]
+smoothed = [mean(losses[max(1,i-window_size):i]) for i in 1:length(losses)]
+upper = [quantile(losses[max(1,i-window_size):i], 0.95) for i in 1:length(losses)]
+lower = [quantile(losses[max(1,i-window_size):i], 0.05) for i in 1:length(losses)]
 
 # Plot bands and smoothed line
 band!(ax, 1:length(losses_gpu), lower, upper, color=(:blue, 0.2))
@@ -103,7 +113,7 @@ RDEParams = RDEParam(tmax = 800.0)
 env = RDEEnv(RDEParams,
     dt = 1.0,
     observation_strategy=SectionedStateObservation(minisections=32))
-sim_test_data = run_policy(ScaledPolicy(RandomRDEPolicy(env), 0.2f0), env)
+sim_test_data = run_policy(ScaledPolicy(SinusoidalRDEPolicy(env, w_1=0f0, w_2=0.5f0), 0.1f0), env)
 plot_shifted_history(sim_test_data, env.prob.x)
 test_states = sim_test_data.states[400:end]
 
@@ -115,7 +125,7 @@ for i in eachindex(test_states)
     test_data[:, 3, i] .= sim_test_data.u_ps[i]
 end
 
-output_data, st = Lux.apply(fno_gpu, test_data[:,:,1:end-1] |> gdev, ps_gpu, st_gpu) |> cdev
+output_data, st = Lux.apply(fno, test_data[:,:,1:end-1] |> gdev, ps, st) |> cdev
 ##
 fig = Figure()
 ax_u = Makie.Axis(fig[1, 1], xlabel="Time", ylabel="u")
