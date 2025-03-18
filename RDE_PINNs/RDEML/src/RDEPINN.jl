@@ -24,6 +24,7 @@ using RDE
 using RDE_Env
 using Statistics
 
+##PINN functions
 # Include submodules
 include("models.jl")
 include("pde_system.jl")
@@ -56,8 +57,8 @@ export plot_experiment_comparison, create_animation
 # Export metrics functions
 export calculate_metrics, compare_metrics
 
-# Export DrWatson functionality
-export @quickactivate, projectdir, datadir, plotsdir, scriptsdir, srcdir
-export safesave, produce_or_load, tagsave, @dict, dict_list
+##FNO functions
+include("data_gathering.jl")
+export make_data_policies_and_envs
 
 end # module 

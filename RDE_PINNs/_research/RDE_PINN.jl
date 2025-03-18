@@ -53,20 +53,23 @@ domains = [t ∈ Interval(0.0, tmax), x ∈ Interval(0.0, L)]
 
 ## Neural network
 rng = Random.default_rng()
-gdev = gpu_device(2)
+gdev = gpu_device(1)
 cdev = cpu_device()
 input_ = length(domains)
 n = 64
 layers = 8
 chain = [Chain(Dense(input_, n, tanh), [Dense(n, n, tanh) for i in layers]..., Dense(n, 1)) for _ in 1:2]
-# ps = Lux.setup(rng, chain)[1] .|> ComponentArray .|> gdev
+## For GPU
+ps = Lux.setup(rng, chain)[1] .|> ComponentArray .|> gdev
+ps = [p .|> Float64 for p in ps]
+## For CPU
 ps = Lux.setup(rng, chain)[1]
-
+##
 
 # strategy = StochasticTraining(128)
 strategy = QuasiRandomTraining(2^14)
-discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = GradientScaleAdaptiveLoss(64), init_params = ps)
-# discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = MiniMaxAdaptiveLoss(64))
+# discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = GradientScaleAdaptiveLoss(64), init_params = ps)
+discretization = PhysicsInformedNN(chain, strategy, adaptive_loss = MiniMaxAdaptiveLoss(64), init_params = ps)
 
 
 @named pdesystem = PDESystem(eqs, bcs, domains, [t, x], [u(t, x), λ(t, x)])
@@ -77,28 +80,34 @@ pde_inner_loss_functions = sym_prob.loss_functions.pde_loss_functions
 bcs_inner_loss_functions = sym_prob.loss_functions.bc_loss_functions
 
 
-losses = []
-pde_losses = []
-bcs_losses = []
+losses = Float64[]
+n_pde_losses = length(pde_inner_loss_functions)
+n_bcs_losses = length(bcs_inner_loss_functions)
+pde_losses = Float64[]
+bcs_losses = Float64[]
 progressbar = ProgressUnknown("Training...", showspeed = true)
 callback = function (p, l)
-    push!(losses, l)
-    push!(pde_losses, map(l_ -> l_(p.u), pde_inner_loss_functions))
-    push!(bcs_losses, map(l_ -> l_(p.u), bcs_inner_loss_functions))
-    next!(progressbar, showvalues = [(:loss, l), (:pde_losses, map(l_ -> l_(p.u), pde_inner_loss_functions)), (:bcs_losses, map(l_ -> l_(p.u), bcs_inner_loss_functions))])
+    if (progressbar.core.counter +1) % 1 == 0 || progressbar.core.counter == 0
+        push!(losses, l)
+        push!(pde_losses, map(l_ -> l_(p.u), pde_inner_loss_functions)...)
+        push!(bcs_losses, map(l_ -> l_(p.u), bcs_inner_loss_functions)...)
+    end
+    next!(progressbar, showvalues = [(:loss, losses[end]),
+     (:pde_losses, pde_losses[end-n_pde_losses+1:end]),
+     (:bcs_losses, bcs_losses[end-n_bcs_losses+1:end])])
     # next!(progressbar, showvalues = [(:loss, l)])
     return false
 end
 ##
 opt = OptimizationOptimisers.Adam(3e-4)
 # opt = BFGS(linesearch = BackTracking())
-res = solve(prob, opt; maxiters = 200, callback);
+res = solve(prob, opt; maxiters = 50, callback);
 @info "Loss = $(res.objective)"
 ## Train more
-opt = OptimizationOptimisers.Adam(3e-4)
-opt = OptimizationOptimJL.LBFGS()
+opt = OptimizationOptimisers.Adam(0.01)
+# opt = OptimizationOptimJL.LBFGS()
 prob = remake(prob, u0 = res.u)
-res = solve(prob, opt; maxiters = 2_000, callback);
+res = solve(prob, opt; maxiters = 200, callback);
 @info "Loss = $(res.objective)"
 ## Plot losses
 pde_u_losses = stack(pde_losses)[1,:]

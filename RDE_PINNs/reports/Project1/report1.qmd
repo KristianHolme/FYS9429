@@ -1,0 +1,36 @@
+---
+title: "Project 1 Report"
+#TODO: change title
+author: "Kristian Holme"
+format: pdf
+---
+
+## Abstract
+
+## Introduction
+### Motivation and Objectives
+### Problem Statement
+### Report Structure
+
+## Methods and Formalism
+### Theoretical Background
+### Implementation Details
+### Numerical Methods
+### Validation and Testing
+
+## Results and Analysis
+### Implementation Results
+### Performance Analysis
+### Discussion of Results
+
+## Conclusions and Future Work
+### Summary of Findings
+### Critical Assessment
+### Future Improvements
+
+## References
+
+## Appendix
+### Code Implementation
+### Additional Results
+### Technical Details
