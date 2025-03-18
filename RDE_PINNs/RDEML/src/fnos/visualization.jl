@@ -16,7 +16,7 @@ function visualize_data(run_data, policies, envs, reset_strategies,
     end
 end
 
-function plot_losses(fno_config, losses)
+function plot_losses(losses, title="Losses")
     fig = Figure()
     ax = Makie.Axis(fig[1, 1], xlabel="Epoch", ylabel="Loss", xscale=log10, yscale=log10)
 
@@ -30,6 +30,11 @@ function plot_losses(fno_config, losses)
     band!(ax, 1:length(losses), lower, upper, color=(:blue, 0.2))
     lines!(ax, smoothed, color=:blue, linewidth=2)
     return fig
+end
+
+function plot_losses(fno_config)
+    title = "Losses for $(fno_config.chs), $(fno_config.modes), $(fno_config.activation)"
+    plot_losses(fno_config.history.losses, title)
 end
 
 function plot_test_comparison(;n_t, test_data, output_data, times=[1, 2, n_t÷2])
