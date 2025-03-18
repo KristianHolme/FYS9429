@@ -1,19 +1,22 @@
-module RDEPINN
+__precompile__(false)
+module RDEML
 """
-RDEPINN - Physics-Informed Neural Networks for Rotating Detonation Engines
+RDEML - Rotating Detonation Engine Machine Learning
 
 This module provides a framework for solving Rotating Detonation Engine (RDE) 
-equations using Physics-Informed Neural Networks (PINNs).
+models using Machine Learning.
 """
 
 using CairoMakie
 using Dates
 using DrWatson
+using DRL_RDE_utils
 using JLD2
 using LineSearches
 using Lux
 using ModelingToolkit
 using ModelingToolkit: Interval, infimum, supremum
+using NeuralOperators
 using NeuralPDE
 using Optimization
 using OptimizationOptimJL
@@ -26,12 +29,12 @@ using Statistics
 
 ##PINN functions
 # Include submodules
-include("models.jl")
-include("pde_system.jl")
-include("training.jl")
-include("visualization.jl")
-include("metrics.jl")
-include("experiment.jl")
+include("pinns/models.jl")
+include("pinns/pde_system.jl")
+include("pinns/training.jl")
+include("pinns/visualization.jl")
+include("pinns/metrics.jl")
+include("pinns/experiment.jl")
 
 # Export main functionality
 export PDESystemConfig, ModelConfig, TrainingConfig, Metrics
@@ -58,7 +61,17 @@ export plot_experiment_comparison, create_animation
 export calculate_metrics, compare_metrics
 
 ##FNO functions
-include("data_gathering.jl")
-export make_data_policies_and_envs
+include("fnos/data_gathering.jl")
+export make_data_policies_and_envs, make_data_reset_strategies,
+    collect_data, save_data
+
+include("fnos/fno.jl")
+export train!, FNO, FNOConfig
+
+include("fnos/visualization.jl")
+export plot_losses, visualize_data, plot_test_comparison
+
+include("fnos/analysis.jl")
+export compare_to_policy
 
 end # module 

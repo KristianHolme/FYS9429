@@ -115,12 +115,12 @@ pde_λ_losses = stack(pde_losses)[2,:]
 ic_u_losses = stack(bcs_losses)[1,:]
 ic_λ_losses = stack(bcs_losses)[2,:]
 fig = Figure()
-ax_losses = Axis(fig[1, 1], title = "Losses", xlabel = "Iteration", ylabel = "Loss", xscale = log10, yscale = log10)
+ax_losses = Makie.Axis(fig[1, 1], title = "Losses", xlabel = "Iteration", ylabel = "Loss", xscale = log10, yscale = log10)
 lines!(ax_losses, losses)
-ax_pde_losses = Axis(fig[1, 2], title = "PDE Losses", xlabel = "Iteration", ylabel = "Loss", xscale = log10, yscale = log10)
+ax_pde_losses = Makie.Axis(fig[1, 2], title = "PDE Losses", xlabel = "Iteration", ylabel = "Loss", xscale = log10, yscale = log10)
 lines!(ax_pde_losses, pde_u_losses, label = "u")
 lines!(ax_pde_losses, pde_λ_losses, label = "λ")
-ax_bcs_losses = Axis(fig[2, 1], title = "BCs Losses", xlabel = "Iteration", ylabel = "Loss", xscale = log10, yscale = log10)
+ax_bcs_losses = Makie.Axis(fig[2, 1], title = "BCs Losses", xlabel = "Iteration", ylabel = "Loss", xscale = log10, yscale = log10)
 u_line = lines!(ax_bcs_losses, ic_u_losses, label = "u")
 λ_line = lines!(ax_bcs_losses, ic_λ_losses, label = "λ")
 Legend(fig[2,2], [u_line, λ_line], ["u", "λ"], tellwidth = false, tellheight = false)
