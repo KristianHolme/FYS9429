@@ -1,3 +1,5 @@
+using DrWatson
+@quickactivate "RDE_PINNS"
 using DRL_RDE_utils
 using ProgressMeter
 using NeuralOperators
@@ -11,20 +13,22 @@ using OptimizationOptimisers
 using CairoMakie
 using JLD2
 using Statistics
+using Base.Threads
 ##
-RDEParams = RDEParam(tmax = 400.0f0)
-env = RDEEnv(RDEParams,
+make_env() = RDEEnv(RDEParam(tmax = 400.0f0),
     dt = 1.0f0,
     observation_strategy=SectionedStateObservation(minisections=32),
-    reset_strategy=ShiftReset(RandomShockOrCombination()))
-N = RDEParams.N
-policies = [ConstantRDEPolicy(env), 
- ScaledPolicy(SinusoidalRDEPolicy(env, w_1=0f0, w_2=0.5f0), 0.5f0),
- ScaledPolicy(RandomRDEPolicy(env), 0.5f0),
- ScaledPolicy(RandomRDEPolicy(env), 0.2f0),
- ScaledPolicy(RandomRDEPolicy(env), 0.1f0),
- ScaledPolicy(RandomRDEPolicy(env), 0.05f0),
- StepwiseRDEPolicy(env, [20.0f0, 100.0f0, 200.0f0, 350.0f0], 
+    reset_strategy=ShiftReset(RandomShockOrCombination())
+)
+envs = [make_env() for _ in 1:11]
+N = envs[1].prob.params.N
+policies = [ConstantRDEPolicy(envs[1]), 
+ ScaledPolicy(SinusoidalRDEPolicy(envs[2], w_1=0f0, w_2=0.5f0), 0.5f0),
+ ScaledPolicy(RandomRDEPolicy(envs[3]), 0.5f0),
+ ScaledPolicy(RandomRDEPolicy(envs[4]), 0.2f0),
+ ScaledPolicy(RandomRDEPolicy(envs[5]), 0.1f0),
+ ScaledPolicy(RandomRDEPolicy(envs[6]), 0.05f0),
+ StepwiseRDEPolicy(envs[7], [20.0f0, 100.0f0, 200.0f0, 350.0f0], 
         [0.64f0, 0.86f0, 0.64f0, 0.96f0]),
  load_best_policy("transition_rl_9", project_path=joinpath(homedir(), "Code", "DRL_RDE"),
     filter_fn=df -> df.target_shock_count == 1)[1],
@@ -41,28 +45,47 @@ policy.py_policy.action_space
 policy.py_policy.predict(rand(Float32, 66), deterministic=true)
 policy.py_policy
 ##
-data = []
 n_runs = 16
+run_datas = Vector{Any}(undef, length(policies)*n_runs)
+data = Vector{Tuple{Array{Float32, 3}, Array{Float32, 3}}}(undef, length(policies)*n_runs)
 prog = Progress(n_runs*length(policies), "Collecting data...")
-for policy in policies, i in 1:n_runs
+data_collect_stats = zeros(Int, length(policies), n_runs)
+for i in 1:(length(policies)*n_runs)
+    policy_idx = div(i-1, n_runs) + 1
+    run_idx = mod(i-1, n_runs) + 1
+    policy = policies[policy_idx]
+    env = envs[policy_idx]
+    
     sim_data = run_policy(policy, env)
+    run_datas[i] = sim_data
+    
     n_data = length(sim_data.states)
-
     raw_data = zeros(Float32, N, 3, n_data)
     x_data = @view raw_data[:,:,1:end-1]
     y_data = @view raw_data[:,1:2,2:end]
-
-    for i in eachindex(sim_data.observations)
-        obs = sim_data.states[i]
-        raw_data[:, 1, i] = obs[1:N]
-        raw_data[:, 2, i] = obs[N+1:2N]
-        raw_data[:, 3, i] .= sim_data.u_ps[i]
+    
+    for j in eachindex(sim_data.observations)
+        obs = sim_data.states[j]
+        raw_data[:, 1, j] = obs[1:N]
+        raw_data[:, 2, j] = obs[N+1:2N]
+        raw_data[:, 3, j] .= sim_data.u_ps[j]
     end
-    push!(data, (x_data, y_data))
-    next!(prog, showvalues=[("Collected data sets for $(typeof(policy))", i)])
+    data[i] = (x_data, y_data)
+    data_collect_stats[policy_idx, run_idx] += 1
+    next!(prog, showvalues=[("$(typeof(policies[ip]))", sum(data_collect_stats[ip,:])) for ip in eachindex(policies)])
 end
-
-
+## inspecting data
+for (i, rdata) in enumerate(run_datas)
+    policy_idx = div(i-1, n_runs) + 1
+    run_idx = mod(i-1, n_runs) + 1
+    fig = plot_shifted_history(rdata, envs[policy_idx].prob.x, title="Run $run_idx, Policy $policy_idx")
+    display(fig)
+end
+## Saving data
+jldsave(datadir("data.jld2"); data)
+## Loading data
+data = load(datadir("data.jld2"))["data"]
+##
 function train!(model, ps, st, data; lr = 3f-4, epochs=10, losses=[], dev=cpu_device(), AD=AutoZygote())
     tstate = Training.TrainState(model, ps, st, OptimizationOptimisers.Adam(lr))
     p = Progress(epochs*length(data))
@@ -82,7 +105,7 @@ end
 ## GPU training
 rng = Random.default_rng()
 const cdev = cpu_device()
-const gdev = gpu_device()
+const gdev = gpu_device(2)
 # const xdev = reactant_device()
 
 fno = FourierNeuralOperator(gelu; chs=(3, 128, 128, 128, 128, 2), modes=(32,), permuted=Val(true))
@@ -113,7 +136,8 @@ RDEParams = RDEParam(tmax = 800.0)
 env = RDEEnv(RDEParams,
     dt = 1.0,
     observation_strategy=SectionedStateObservation(minisections=32))
-sim_test_data = run_policy(ScaledPolicy(SinusoidalRDEPolicy(env, w_1=0f0, w_2=0.5f0), 0.1f0), env)
+sim_test_data = run_policy(StepwiseRDEPolicy(env, [20.0f0, 100.0f0, 200.0f0, 300.0f0, 400.0f0, 500.0f0, 600.0f0, 700.0f0], 
+[0.64f0, 0.96f0, 0.45f0, 0.84f0, 0.5f0, 0.75f0, 0.4f0, 0.62f0]), env)
 plot_shifted_history(sim_test_data, env.prob.x)
 test_states = sim_test_data.states[400:end]
 
