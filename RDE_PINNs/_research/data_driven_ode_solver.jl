@@ -2,17 +2,18 @@ using DrWatson
 @quickactivate "RDE_PINNs"
 using DRL_RDE_utils
 using RDEML
-using ProgressMeter
-using NeuralOperators
+using Random
 using Lux
 using LuxCUDA
+##
+using JLD2
+using ProgressMeter
+using NeuralOperators
 using Optimisers
 using Zygote
 using LinearAlgebra
-using Random
 using OptimizationOptimisers
 using CairoMakie
-using JLD2
 using Statistics
 using Base.Threads
 ##
@@ -35,14 +36,12 @@ const gdev = gpu_device(2)
 # const xdev = reactant_device()
 
 fno_config = FNOConfig()
-fno = FNO(fno_config)
 
-ps, st = Lux.setup(rng, fno) |> gdev;
-
-@time losses = train!(fno, ps, st, data; epochs=100, dev=gdev, lr=0.001f0)
+@time train!(fno_config, data; epochs=10, dev=gdev, lr=0.001f0)
 ##more training
-@time losses = train!(fno, ps, st, data;
-     losses=losses, epochs=40, dev=gdev, lr=3f-4)
+@time train!(fno_config, data; epochs=40, dev=gdev, lr=3f-4)
+
+
 
 ##
 plot_losses(fno_config, losses)
