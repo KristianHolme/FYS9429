@@ -53,7 +53,12 @@ function train!(model, ps, st, data; lr = 3f-4, epochs=10, losses=[], dev=cpu_de
     return losses
 end
 
-function train!(config::FNOConfig, data; lr::AbstractFloat=3e-4, epochs::Int=10, dev=cpu_device(), AD=AutoZygote())
+function train!(config::FNOConfig, data, 
+     lr::Number,
+     epochs::Int;
+     dev=cpu_device(),
+     AD=AutoZygote()
+    )
     config.ps = config.ps |> dev
     config.st = config.st |> dev
     model = FNO(config)
@@ -64,16 +69,17 @@ function train!(config::FNOConfig, data; lr::AbstractFloat=3e-4, epochs::Int=10,
     return nothing
 end
 
-function train!(config::FNOConfig, data;
-     lr::AbstractArray{<:Real}=3e-4,
-     epochs::AbstractArray{<:Int}=10,
+function train!(config::FNOConfig, data,
+     lr::AbstractArray{<:Real},
+     epochs::AbstractArray{<:Int};
      dev=cpu_device(),
      AD=AutoZygote()
     )
     @assert length(lr) == length(epochs) "lr and epochs must have the same length"
     for (lr, epochs) in zip(lr, epochs)
-        train!(config, data; lr, epochs, dev, AD)
+        train!(config, data, lr, epochs; dev, AD)
     end
+    return nothing
 end
 
 

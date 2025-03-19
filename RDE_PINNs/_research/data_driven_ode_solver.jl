@@ -24,12 +24,12 @@ const cdev = cpu_device()
 const gdev = gpu_device(2)
 ## Setup FNO
 fno_config = FNOConfig()
-@time train!(fno_config, data; epochs=10, dev=gdev, lr=0.01f0)
+@time train!(fno_config, data, 0.01f0, 10; dev=gdev)
 plot_losses(fno_config)
 ##more training
-@time train!(fno_config, data; epochs=50, dev=gdev, lr=0.001f0)
-@time train!(fno_config, data; epochs=50, dev=gdev, lr=3f-4)
-plot_losses(fno_config, losses)
+@time train!(fno_config, data, 0.001f0, 50; dev=gdev)
+@time train!(fno_config, data, 3f-4, 50; dev=gdev)
+plot_losses(fno_config)
 ## Save the model
 safesave(datadir("fno", "first_fno.jld2"), fno_config)
 temp = wload(datadir("fno", "first_fno.jld2"))["full_config"]
@@ -52,7 +52,3 @@ env = envs[end]
 ##
 fig = compare_to_policy(;fnoconfig=fno_config, policy, env, cdev, gdev, times=[1, 200, 399])
 fig = compare_to_policy(;fnoconfig=fno_config, policy, env, cdev, gdev, recursive=true, times=[1, 200, 399])
-##
-# Calculate test loss
-test_loss = mean(abs2, output_data .- test_data[:,:,2:end])
-@info "Test Loss: $test_loss"
