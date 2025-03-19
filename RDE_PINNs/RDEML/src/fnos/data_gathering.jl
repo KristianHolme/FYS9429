@@ -30,10 +30,10 @@ function make_data_reset_strategies()
     ShiftReset(NShock(2)),
     ShiftReset(NShock(3)),
     ShiftReset(NShock(4)),
-    ShiftReset(SineCombination(;modes=2:9)),
     ShiftReset(RandomCombination()),
     ShiftReset(RandomCombination()),
-    ShiftReset(RandomCombination()),
+    ShiftReset(SineCombination()),
+    ShiftReset(SineCombination())
     ]
 end
 
@@ -64,12 +64,16 @@ function collect_data(policies, envs, reset_strategies; n_runs_per_reset_strateg
                 raw_data = zeros(Float32, N, 3, n_data)
                 x_data = @view raw_data[:,:,1:end-1]
                 y_data = @view raw_data[:,1:2,2:end]
+                """
+                since the recorded injection pressure at index i was the pressure that was in the chamber from 
+                t[i-1] to t[i], we need to shift the injection pressure by one time step to the left
+                """
                 
                 for j in eachindex(sim_data.observations)
                     obs = sim_data.states[j]
                     raw_data[:, 1, j] = obs[1:N]
                     raw_data[:, 2, j] = obs[N+1:2N]
-                    raw_data[:, 3, j] .= sim_data.u_ps[j]
+                    raw_data[:, 3, j] .= sim_data.u_ps[min(j+1, n_data)] #u_p at last time step is repeated, but the last value unused
                 end
                 data[i] = (x_data, y_data)
                 data_collect_stats[policy_i, (reset_strategy_i-1)*n_runs_per_reset_strategy + run_i] += 1

@@ -7,10 +7,10 @@ end
 function Base.show(io::IO, history::TrainingHistory)
     println(io, "TrainingHistory(")
     println(io, "  losses: $(length(history.losses)) values ")
-    println(io, "         min: $(minimum(history.losses))")
-    println(io, "         max: $(maximum(history.losses))")
-    println(io, "         mean: $(mean(history.losses))")
     if !isempty(history.losses)
+        println(io, "         min: $(minimum(history.losses))")
+        println(io, "         max: $(maximum(history.losses))")
+        println(io, "         mean: $(mean(history.losses))")
         println(io, "         latest: $(history.losses[end])")
     end
     println(io, "  epochs=$(history.epochs),")
@@ -53,7 +53,7 @@ function train!(model, ps, st, data; lr = 3f-4, epochs=10, losses=[], dev=cpu_de
     return losses
 end
 
-function train!(config::FNOConfig, data; lr=3e-4, epochs=10, dev=cpu_device(), AD=AutoZygote())
+function train!(config::FNOConfig, data; lr::AbstractFloat=3e-4, epochs::Int=10, dev=cpu_device(), AD=AutoZygote())
     config.ps = config.ps |> dev
     config.st = config.st |> dev
     model = FNO(config)
@@ -63,3 +63,17 @@ function train!(config::FNOConfig, data; lr=3e-4, epochs=10, dev=cpu_device(), A
     push!(hist.epochs, epochs)
     return nothing
 end
+
+function train!(config::FNOConfig, data;
+     lr::AbstractArray{<:Real}=3e-4,
+     epochs::AbstractArray{<:Int}=10,
+     dev=cpu_device(),
+     AD=AutoZygote()
+    )
+    @assert length(lr) == length(epochs) "lr and epochs must have the same length"
+    for (lr, epochs) in zip(lr, epochs)
+        train!(config, data; lr, epochs, dev, AD)
+    end
+end
+
+

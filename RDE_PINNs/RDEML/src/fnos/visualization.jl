@@ -37,12 +37,9 @@ function plot_losses(fno_config)
     plot_losses(fno_config.history.losses, title)
 end
 
-function plot_test_comparison(;n_t, test_data, output_data, times=[1, 2, n_t÷2])
-    fig = Figure()
-    ax_u = Makie.Axis(fig[1, 1], xlabel="Time", ylabel="u")
-    ax_λ = Makie.Axis(fig[2, 1], xlabel="Time", ylabel="λ")
-    
-    colors = Makie.wong_colors()[1:length(times)]
+function plot_test_comparison(;n_t, x, test_data, predicted_states, times=[1, 2, n_t÷2], title="")
+    fig = Figure(size=(1000, 200*length(times)))
+    Label(fig[0, 1:2], title, tellwidth=false, fontsize=24)
     
     # Create legend elements for line styles
     style_elements = [
@@ -50,24 +47,27 @@ function plot_test_comparison(;n_t, test_data, output_data, times=[1, 2, n_t÷2]
         LineElement(color=:black, linestyle=:solid, label="FNO")
     ]
     
-    # Create legend elements for timesteps
-    time_elements = [LineElement(color=colors[i], label="t=$(times[i])") for i in 1:length(times)]
+    
+    colors = Makie.wong_colors()[1:2]
     
     # Plot the data
-    for (i, ind) in enumerate(times)
-        lines!(ax_u, test_data[:, 1, ind+1], color=colors[i], linestyle=:dash)
-        lines!(ax_u, output_data[:, 1, ind], color=colors[i])
-        lines!(ax_λ, test_data[:, 2, ind+1], color=colors[i], linestyle=:dash)
-        lines!(ax_λ, output_data[:, 2, ind], color=colors[i])
+    for (i, time_step) in enumerate(times)
+        Label(fig[i*2, :], "t=$(times[i])", fontsize=16, font=:bold)
+        ax_u = Makie.Axis(fig[i*2+1, 1], xlabel="x", ylabel="u")
+        ax_λ = Makie.Axis(fig[i*2+1, 2], xlabel="x", ylabel="λ")
+        lines!(ax_u, x, test_data[:, 1, time_step+1], color=colors[1], linestyle=:dash) #+1 because index 1 is time 0
+        lines!(ax_u, x, predicted_states[:, 1, time_step+1], color=colors[1])
+        lines!(ax_λ, x, test_data[:, 2, time_step+1], color=colors[2], linestyle=:dash)
+        lines!(ax_λ, x, predicted_states[:, 2, time_step+1], color=colors[2])
     end
+    # legend for line styles
+    Legend(fig[1,1:2], 
+        style_elements,
+        ["Simulation", "FNO"],
+        orientation=:horizontal,
+        tellwidth=false
+    )
     
-    # Create single multi-group legend
-    Legend(fig[1:2,2], 
-        [style_elements, time_elements],
-        [["Simulation", "FNO"], ["t=$(times[i])" for i in 1:length(times)]],
-        ["Style", "Timestep"],
-        vertical=true,
-        tellheight=false)
     
     return fig
 end
