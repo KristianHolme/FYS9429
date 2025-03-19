@@ -5,63 +5,54 @@ using RDEML
 using Random
 using Lux
 using LuxCUDA
-##
-using JLD2
-using ProgressMeter
-using NeuralOperators
-using Optimisers
-using Zygote
-using LinearAlgebra
-using OptimizationOptimisers
-using CairoMakie
-using Statistics
-using Base.Threads
-##
+## Get Policies and evironments for collecting data
 policies, envs = make_data_policies_and_envs()
 reset_strategies = make_data_reset_strategies()
-##
+## Collect data
 n_runs_per_reset_strategy = 4
 run_data, data = collect_data(policies, envs, reset_strategies; n_runs_per_reset_strategy)
-save_data(run_data, data; filename="RDE_sim_data.jld2")
-## Viz
+save_data(run_data, data; filename="RDE_sim_data_2.jld2")
+## Visualize data
 visualize_data(run_data, policies, envs, reset_strategies, n_runs_per_reset_strategy; save_plots=true)
-## Loading data
+## Load data
 all_data = load(datadir("RDE_sim_data.jld2"))
 run_data = all_data["run_data"]
 data = all_data["data"]
-## GPU training
+## Setup devices
 rng = Random.default_rng()
 const cdev = cpu_device()
 const gdev = gpu_device(2)
-# const xdev = reactant_device()
-
+## Setup FNO
 fno_config = FNOConfig()
-
-@time train!(fno_config, data; epochs=10, dev=gdev, lr=0.001f0)
+@time train!(fno_config, data; epochs=10, dev=gdev, lr=0.01f0)
+plot_losses(fno_config)
 ##more training
-@time train!(fno_config, data; epochs=40, dev=gdev, lr=3f-4)
-
-
-
-##
+@time train!(fno_config, data; epochs=50, dev=gdev, lr=0.001f0)
+@time train!(fno_config, data; epochs=50, dev=gdev, lr=3f-4)
 plot_losses(fno_config, losses)
-## Test the model
+## Save the model
+safesave(datadir("fno", "first_fno.jld2"), fno_config)
+temp = wload(datadir("fno", "first_fno.jld2"))["full_config"]
+temp.history
+
+
+
+
 ##
-RDEParams = RDEParam(tmax = 800.0)
+RDEParams = RDEParam(tmax = 410.0)
 env = RDEEnv(RDEParams,
     dt = 1.0,
-    observation_strategy=SectionedStateObservation(minisections=32))
+    observation_strategy=SectionedStateObservation(minisections=32), 
+    reset_strategy=RandomCombination())
 policy = StepwiseRDEPolicy(env, [20.0f0, 100.0f0, 200.0f0, 300.0f0, 400.0f0, 500.0f0, 600.0f0, 700.0f0], 
-[0.64f0, 0.96f0, 0.45f0, 0.84f0, 0.5f0, 0.75f0, 0.4f0, 0.62f0])
+[0.64f0, 0.96f0, 0.45f0, 0.7f0, 0.5f0, 0.75f0, 0.4f0, 0.55f0])
 ## Policy used in training
 policy = policies[end]
 env = envs[end]
 ##
-fig = compare_to_policy(;fno, ps, st, policy, env, cdev, gdev)
-##
-save(plotsdir("fno_test_modes16.png"), fig)
+fig = compare_to_policy(;fnoconfig=fno_config, policy, env, cdev, gdev, times=[1, 200, 399])
+fig = compare_to_policy(;fnoconfig=fno_config, policy, env, cdev, gdev, recursive=true, times=[1, 200, 399])
 ##
 # Calculate test loss
 test_loss = mean(abs2, output_data .- test_data[:,:,2:end])
 @info "Test Loss: $test_loss"
-

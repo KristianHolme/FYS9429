@@ -23,4 +23,11 @@ end
 x = LinRange(0, 2π, 512) |> collect
 y = supersin(x)
 lines(x, vec(y))
-
+##
+fc = FNOConfig(modes=32)
+savename(fc)
+RDEML.fnoconfig_to_dict(fc)
+safesave(datadir("test", savename(fc)*".jld2"), fc)
+res = collect_results(datadir("test"))
+fc = res[1, :full_config]
+res[1, "chs"]
