@@ -75,7 +75,6 @@ models using Machine Learning.
     export compare_to_policy
 
     include("fnos/model_io.jl")
-    export save_fno_config, load_fno_config, list_saved_models, 
-       produce_or_load_fno, save_prediction, save_fno_config_direct, load_fno_config_direct 
+    export fnoconfig_to_dict, dict_to_fnoconfig
 
 end # module 
