@@ -77,7 +77,9 @@ function collect_data(policies, envs, reset_strategies; n_runs_per_reset_strateg
                 end
                 data[i] = (x_data, y_data)
                 data_collect_stats[policy_i, (reset_strategy_i-1)*n_runs_per_reset_strategy + run_i] += 1
-                next!(prog, showvalues=[("$(policies[policy_i])", sum(data_collect_stats[policy_i,:])) for policy_i in eachindex(policies)])
+                #TODO: fix this
+                next!(prog, showvalues=[("$(policies[policy_i] isa SBPolicy ? policies[policy_i] : typeof(policies[policy_i]))",
+                                          sum(data_collect_stats[policy_i,:])) for policy_i in eachindex(policies)])
             end
         end
     end
