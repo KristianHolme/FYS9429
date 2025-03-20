@@ -16,8 +16,32 @@ function visualize_data(run_data, policies, envs, reset_strategies,
     end
 end
 
-function plot_losses(losses, title="Losses")
+"""
+    plot_losses(losses; title="Losses")
+
+Plot training losses with smoothed trend line and confidence bands.
+
+# Arguments
+- `losses`: Vector of loss values recorded during training
+- `title`: Title for the plot (default: "Losses")
+
+# Details
+This function visualizes training losses with:
+1. A smoothed trend line using a rolling mean with window size of 50
+2. Confidence bands showing the 5th to 95th percentile range of loss values in each window
+
+The confidence bands help visualize the volatility/variance of the loss values:
+- `upper`: 95th percentile of losses in each rolling window, showing the upper bound of typical losses
+- `lower`: 5th percentile of losses in each rolling window, showing the lower bound of typical losses
+
+The log-scaled axes help visualize improvements that occur at different orders of magnitude.
+
+# Returns
+- `fig`: A Makie Figure object containing the plot
+"""
+function plot_losses(losses; title="Losses")
     fig = Figure()
+    Label(fig[0, 1], title, tellwidth=false, fontsize=18)
     ax = Makie.Axis(fig[1, 1], xlabel="Epoch", ylabel="Loss", xscale=log10, yscale=log10)
 
     # Calculate smoothed line and confidence bands
@@ -32,13 +56,21 @@ function plot_losses(losses, title="Losses")
     return fig
 end
 
-function plot_losses(fno_config)
+function plot_losses(fno_config::FNOConfig;saveplot=false)
     title = "Losses for $(fno_config.chs), $(fno_config.modes), $(fno_config.activation)"
-    plot_losses(fno_config.history.losses, title)
+    fig = plot_losses(fno_config.history.losses; title)
+    if saveplot
+        path = plotsdir("fno", savename(fno_config, "svg"))
+        if !isdir(plotsdir("fno"))
+            mkdir(plotsdir("fno"))
+        end
+        save(path, fig)
+    end
+    return fig
 end
 
-function plot_test_comparison(;n_t, x, test_data, predicted_states, times=[1, 2, n_t÷2], title="")
-    fig = Figure(size=(1000, 200*length(times)))
+function plot_test_comparison(;n_t, x, test_data, predicted_states, timesteps=[1, 2, n_t÷2], title="")
+    fig = Figure(size=(1000, 200*length(timesteps)))
     Label(fig[0, 1:2], title, tellwidth=false, fontsize=24)
     
     # Create legend elements for line styles
@@ -51,14 +83,14 @@ function plot_test_comparison(;n_t, x, test_data, predicted_states, times=[1, 2,
     colors = Makie.wong_colors()[1:2]
     
     # Plot the data
-    for (i, time_step) in enumerate(times)
-        Label(fig[i*2, :], "t=$(times[i])", fontsize=16, font=:bold)
-        ax_u = Makie.Axis(fig[i*2+1, 1], xlabel="x", ylabel="u")
-        ax_λ = Makie.Axis(fig[i*2+1, 2], xlabel="x", ylabel="λ")
-        lines!(ax_u, x, test_data[:, 1, time_step+1], color=colors[1], linestyle=:dash) #+1 because index 1 is time 0
-        lines!(ax_u, x, predicted_states[:, 1, time_step+1], color=colors[1])
-        lines!(ax_λ, x, test_data[:, 2, time_step+1], color=colors[2], linestyle=:dash)
-        lines!(ax_λ, x, predicted_states[:, 2, time_step+1], color=colors[2])
+    for (i, timestep) in enumerate(filter(x->x+1<=n_t, timesteps))
+        Label(fig[i*2, :], "t=$(timestep)", fontsize=16, font=:bold)
+        ax_u = Makie.Axis(fig[i*2+1, 1], xlabel="x", ylabel="u", ylabelrotation=0)
+        ax_λ = Makie.Axis(fig[i*2+1, 2], xlabel="x", ylabel="λ", ylabelrotation=0)
+        lines!(ax_u, x, test_data[:, 1, timestep+1], color=colors[1], linestyle=:dash) #+1 because index 1 is time 0
+        lines!(ax_u, x, predicted_states[:, 1, timestep+1], color=colors[1])
+        lines!(ax_λ, x, test_data[:, 2, timestep+1], color=colors[2], linestyle=:dash)
+        lines!(ax_λ, x, predicted_states[:, 2, timestep+1], color=colors[2])
     end
     # legend for line styles
     Legend(fig[1,1:2], 

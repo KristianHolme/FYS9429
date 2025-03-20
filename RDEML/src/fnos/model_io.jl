@@ -49,7 +49,7 @@ end
 # Define custom loading function for directly loaded dictionaries
 function DrWatson.wload(filename::AbstractString, ::Type{FNOConfig})
     # Load the dictionary from file
-    dict = DrWatson._wload(filename)
+    dict = DrWatson.wload(filename)
     # Convert to FNOConfig
     return dict_to_fnoconfig(dict)
 end

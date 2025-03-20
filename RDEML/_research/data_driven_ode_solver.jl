@@ -15,7 +15,7 @@ save_data(run_data, data; filename="RDE_sim_data_2.jld2")
 ## Visualize data
 visualize_data(run_data, policies, envs, reset_strategies, n_runs_per_reset_strategy; save_plots=true)
 ## Load data
-all_data = load(datadir("RDE_sim_data.jld2"))
+all_data = load(datadir("RDE_sim_data_2.jld2"))
 run_data = all_data["run_data"]
 data = all_data["data"]
 ## Setup devices
@@ -25,15 +25,15 @@ const gdev = gpu_device(2)
 ## Setup FNO
 fno_config = FNOConfig()
 @time train!(fno_config, data, 0.01f0, 10; dev=gdev)
-plot_losses(fno_config)
+plot_losses(fno_config; saveplot=true)
 ##more training
 @time train!(fno_config, data, 0.001f0, 50; dev=gdev)
-@time train!(fno_config, data, 3f-4, 50; dev=gdev)
-plot_losses(fno_config)
+@time train!(fno_config, data, 3f-5, 100; dev=gdev)
+plot_losses(fno_config; saveplot=true)
 ## Save the model
-safesave(datadir("fno", "first_fno.jld2"), fno_config)
-temp = wload(datadir("fno", "first_fno.jld2"))["full_config"]
-temp.history
+safesave(datadir("fno", savename(fno_config, "jld2")), fno_config)
+
+
 
 
 
@@ -43,12 +43,12 @@ RDEParams = RDEParam(tmax = 410.0)
 env = RDEEnv(RDEParams,
     dt = 1.0,
     observation_strategy=SectionedStateObservation(minisections=32), 
-    reset_strategy=RandomCombination())
+    reset_strategy=WeightedCombination(Float32[0.15, 0.5, 0.2, 0.15]))
 policy = StepwiseRDEPolicy(env, [20.0f0, 100.0f0, 200.0f0, 300.0f0, 400.0f0, 500.0f0, 600.0f0, 700.0f0], 
 [0.64f0, 0.96f0, 0.45f0, 0.7f0, 0.5f0, 0.75f0, 0.4f0, 0.55f0])
 ## Policy used in training
 policy = policies[end]
 env = envs[end]
 ##
-fig = compare_to_policy(;fnoconfig=fno_config, policy, env, cdev, gdev, times=[1, 200, 399])
-fig = compare_to_policy(;fnoconfig=fno_config, policy, env, cdev, gdev, recursive=true, times=[1, 200, 399])
+fig = compare_to_policy(;fnoconfig=fno_config, policy, env, cdev, gdev, timesteps=[1, 10, 20])
+fig = compare_to_policy(;fnoconfig=fno_config, policy, env, cdev, gdev, recursive=true, timesteps=[1, 10, 20])
