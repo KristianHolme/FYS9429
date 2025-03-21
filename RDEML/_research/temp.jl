@@ -31,3 +31,39 @@ safesave(datadir("test", savename(fc)*".jld2"), fc)
 res = collect_results(datadir("test"))
 fc = res[1, :full_config]
 res[1, "chs"]
+##
+using DrWatson
+@quickactivate :RDEML
+env = RDEEnv(RDEParam(tmax = 40.0f0),
+    dt = 1.0f0,
+    observation_strategy=SectionedStateObservation(minisections=32, target_shock_count=1),
+    reset_strategy=ShiftReset(RandomShockOrCombination())
+)
+policy = ConstantRDEPolicy(env)
+target = 1
+policy = load_best_policy("transition_rl_9", project_path=joinpath(homedir(), "Code", "DRL_RDE"),
+    filter_fn=df -> df.target_shock_count == target, name="t9-target-$(target)-best")[1]
+sim_data = run_policy(policy, env)
+dataset_info = DataSetInfo(sim_data, policy, env.prob.reset_strategy, 1, length(sim_data.states))
+savename(dataset_info)
+safesave(datadir("test", savename(dataset_info)*".jld2"), dataset_info)
+collect_results(datadir("test"))
+
+data = prepare_dataset("test", batches=3)
+df = collect_results(datadir("test"))
+size(df)
+eachrow(df)
+rows(df)
+
+##
+env = RDEEnv(RDEParam(tmax = 400.0f0),
+    dt = 1.0f0,
+    observation_strategy=SectionedStateObservation(minisections=32, target_shock_count=1),
+    reset_strategy=ShiftReset(SineCombination())
+)
+
+policy = ScaledPolicy(RandomRDEPolicy(env), 0.05f0)
+##
+sim_data = run_policy(policy, env)
+plot_shifted_history(sim_data, env.prob.x)
+##
