@@ -1,19 +1,14 @@
 __precompile__(false)
 module RDEML
-"""
-RDEML - Rotating Detonation Engine Machine Learning
-
-This module provides a framework for solving Rotating Detonation Engine (RDE) 
-models using Machine Learning.
-"""
-
+    using Reexport
     using CairoMakie
     using Dates
     using DrWatson
-    using DRL_RDE_utils
+    @reexport using DRL_RDE_utils
     using JLD2
     using LineSearches
-    using Lux
+    @reexport using Lux
+    @reexport using LuxCUDA
     using ModelingToolkit
     using ModelingToolkit: Interval, infimum, supremum
     using NeuralOperators
@@ -22,9 +17,7 @@ models using Machine Learning.
     using OptimizationOptimJL
     using OptimizationOptimisers
     using ProgressMeter
-    using Random
-    using RDE
-    using RDE_Env
+    @reexport using Random
     using Statistics
 
     ##PINN functions
@@ -62,8 +55,9 @@ models using Machine Learning.
 
     ##FNO functions
     include("fnos/data_gathering.jl")
-    export make_data_policies_and_envs, make_data_reset_strategies,
-        collect_data, save_data
+    export get_data_policies, get_data_reset_strategies,
+        collect_data, save_data, DataGatherer, DataSetInfo,
+        prepare_dataset, generate_data
 
     include("fnos/fno.jl")
     export train!, FNO, FNOConfig
@@ -76,5 +70,8 @@ models using Machine Learning.
 
     include("fnos/model_io.jl")
     export fnoconfig_to_dict, dict_to_fnoconfig
+
+    include("fnos/utils.jl")
+    export train_and_save!
 
 end # module 
