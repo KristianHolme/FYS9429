@@ -1,6 +1,5 @@
-function visualize_data(run_data, policies, envs, reset_strategies, 
-    n_runs_per_reset_strategy; save_plots=false, display_plots=true)
-    n_runs = length(reset_strategies)*n_runs_per_reset_strategy
+function visualize_data(df, env=make_env(); save_plots=false, display_plots=true)
+    n_runs = size(df, 2)
     for (i, rdata) in enumerate(run_data)
         policy_idx = div(i-1, n_runs) + 1
         total_run_idx = mod(i-1, n_runs) + 1
@@ -56,13 +55,13 @@ function plot_losses(losses; title="Losses")
     return fig
 end
 
-function plot_losses(fno_config::FNOConfig;saveplot=false)
+function plot_losses(fno_config::FNOConfig;saveplot=false, folder="")
     title = "Losses for $(fno_config.chs), $(fno_config.modes), $(fno_config.activation)"
     fig = plot_losses(fno_config.history.losses; title)
     if saveplot
-        path = plotsdir("fno", savename(fno_config, "svg"))
-        if !isdir(plotsdir("fno"))
-            mkdir(plotsdir("fno"))
+        path = plotsdir("fno", folder, savename(fno_config, "svg"))
+        if !isdir(plotsdir("fno", folder))
+            mkdir(plotsdir("fno", folder))
         end
         save(path, fig)
     end
