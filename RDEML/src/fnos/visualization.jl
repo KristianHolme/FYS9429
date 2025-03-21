@@ -1,12 +1,11 @@
 function visualize_data(df, env=make_env(); save_plots=false, display_plots=true)
-    n_runs = size(df, 2)
-    for (i, rdata) in enumerate(run_data)
-        policy_idx = div(i-1, n_runs) + 1
-        total_run_idx = mod(i-1, n_runs) + 1
-        reset_strategy_idx = div(total_run_idx-1, n_runs_per_reset_strategy) + 1
-        reset_strategy_run_idx = mod(total_run_idx-1, n_runs_per_reset_strategy) + 1
-        name = "$(typeof(policies[policy_idx])) ($(policy_idx)), $(reset_strategies[reset_strategy_idx]) ( $(reset_strategy_idx) ), run $reset_strategy_run_idx"
-        fig = plot_shifted_history(rdata, envs[policy_idx].prob.x, use_rewards=false,
+    for df_row in eachrow(df)
+        data_info = wload(df_row.path, DataSetInfo)
+        policy = data_info.policy
+        reset_strategy = data_info.reset_strategy
+        run_idx = data_info.run
+        name = "$(policy), $(reset_strategy), run $run_idx"
+        fig = plot_shifted_history(data_info.sim_data, env.prob.x, use_rewards=false,
             title=name)
         if save_plots
             safesave(joinpath(plotsdir(), "data_collection_viz", name*".png"), fig)
