@@ -140,17 +140,22 @@ end
 
 function setup_env!(env, policy, reset_strategy)
     env.prob.reset_strategy = reset_strategy
-    target_shock_count = get(policy, :target_shock_count, nothing)
-    env.observation_strategy.target_shock_count = target_shock_count
-    policy.env = env
+    target_shock_count = hasfield(typeof(policy), :target_shock_count) ? 
+                         getfield(policy, :target_shock_count) : 
+                         1
+    env.observation_strategy= SectionedStateObservation(target_shock_count=target_shock_count)
 end
 
-function generate_data(data_gatherer::DataGatherer; env=make_env(), dataset_name="datasets")
-    total_runs = total_runs(data_gatherer)
-    prog = Progress(total_runs, "Collecting data...")
+function generate_data(data_gatherer::DataGatherer; dataset_name="datasets")
+    tot_runs = total_runs(data_gatherer)
+    prog = Progress(tot_runs, "Collecting data...")
     for policy in data_gatherer.policies
         for reset_strategy in data_gatherer.reset_strategies
             for run_i in 1:data_gatherer.n_runs
+                env = get_env(policy)
+                if isnothing(env)
+                    env = make_env()
+                end
                 setup_env!(env, policy, reset_strategy)
                 sim_data = run_policy(policy, env)
 
@@ -162,14 +167,14 @@ function generate_data(data_gatherer::DataGatherer; env=make_env(), dataset_name
                          $(reset_strategy) terminated at run $run_i"
                 end
                 
-                next!(prog, showvalues=[("$(policy)",run_i)])
+                next!(prog, showvalues=[("$(policy), $(reset_strategy)",run_i)])
             end
         end
     end
     @info "Done collecting data, collected $(length(data_gatherer.policies)) policies 
         × $(length(data_gatherer.reset_strategies)) reset strategies × $(data_gatherer.n_runs) 
-        runs = $(total_runs) total runs"
-    return run_data, data
+        runs = $(tot_runs) total runs"
+    return nothing
 end
 
 function sim_data_to_data_set(sim_data::PolicyRunData)
@@ -193,9 +198,148 @@ function sim_data_to_data_set(sim_data::PolicyRunData)
 end
 
 """
-    prepare_dataset(dataset="datasets"; max_batch_size::Int=2^17, batches::Union{Int,Nothing}=nothing, shuffle::Bool=true, rng=Random.default_rng())
+    DatasetManager{T<:AbstractFloat}
 
-Prepare a dataset for FNO training by loading data from simulation results and splitting into batches.
+Manages dataset batches with support for shuffling between epochs.
+
+# Fields
+- `raw_x_data`: Original unbatched feature data
+- `raw_y_data`: Original unbatched target data
+- `current_batches`: Current batched data as vector of (x,y) tuples
+- `batch_size`: Size of individual batches (if specified)
+- `n_batches`: Number of batches (if specified)
+- `rng`: Random number generator for shuffling
+"""
+mutable struct DatasetManager{T<:AbstractFloat}
+    raw_x_data::Array{T,3}           # Original unbatched x data
+    raw_y_data::Array{T,3}           # Original unbatched y data
+    current_batches::Vector{Tuple{Array{T,3}, Array{T,3}}}  # Current batched data
+    batch_size::Union{Int, Nothing}
+    n_batches::Union{Int, Nothing}
+    rng::AbstractRNG
+    
+    function DatasetManager(raw_x_data::Array{T,3}, raw_y_data::Array{T,3};
+                            max_batch_size::Int=2^17,
+                            batches::Union{Int,Nothing}=nothing,
+                            shuffle::Bool=true,
+                            rng=Random.default_rng()) where {T<:AbstractFloat}
+        
+        # Create initial batches
+        manager = new{T}(raw_x_data, raw_y_data, [], 
+                        (isnothing(batches) ? max_batch_size : nothing), 
+                        batches, rng)
+        
+        # Generate initial batch arrangement
+        shuffle_batches!(manager, shuffle=shuffle)
+        
+        return manager
+    end
+end
+
+function Base.show(io::IO, dm::DatasetManager)
+    if get(io, :compact, false)::Bool
+        print(io, "DatasetManager($(length(dm.current_batches)) batches)")
+    else
+        print(io, "DatasetManager($(length(dm.current_batches)) batches, $(size(dm.raw_x_data, 3)) samples)")
+    end
+end
+
+function Base.show(io::IO, ::MIME"text/plain", dm::DatasetManager{T}) where {T}
+    println(io, "DatasetManager{$T}:")
+    println(io, "  samples: $(size(dm.raw_x_data, 3))")
+    println(io, "  batches: $(length(dm.current_batches))")
+    println(io, "  features shape: $(size(dm.raw_x_data))")
+    println(io, "  targets shape: $(size(dm.raw_y_data))")
+    if !isnothing(dm.batch_size)
+        println(io, "  batch size: $(dm.batch_size)")
+    elseif !isnothing(dm.n_batches)
+        println(io, "  fixed batch count: $(dm.n_batches)")
+    end
+end
+
+"""
+    shuffle_batches!(dm::DatasetManager; shuffle::Bool=true)
+
+Regenerate batches for the dataset, optionally with shuffling.
+
+# Arguments
+- `dm::DatasetManager`: The dataset manager to update
+- `shuffle::Bool=true`: Whether to shuffle data before creating batches
+- `max_batch_size::Union{Int,Nothing}=nothing`: Optional new max batch size
+- `batches::Union{Int,Nothing}=nothing`: Optional new number of batches
+
+# Returns
+The updated DatasetManager
+"""
+function shuffle_batches!(dm::DatasetManager; 
+                         shuffle::Bool=true,
+                         max_batch_size::Union{Int,Nothing}=nothing,
+                         batches::Union{Int,Nothing}=nothing)
+    
+    # Update batch parameters if provided
+    if !isnothing(max_batch_size)
+        dm.batch_size = max_batch_size
+        dm.n_batches = nothing
+    end
+    if !isnothing(batches)
+        dm.n_batches = batches
+        dm.batch_size = nothing
+    end
+    
+    # Get data dimensions
+    n_samples = size(dm.raw_x_data, 3)
+    
+    # Create shuffled indices if requested
+    if shuffle
+        indices = randperm(dm.rng, n_samples)
+        x_data = dm.raw_x_data[:,:,indices]
+        y_data = dm.raw_y_data[:,:,indices]
+    else
+        x_data = dm.raw_x_data
+        y_data = dm.raw_y_data
+    end
+    
+    # Determine number of batches
+    if isnothing(dm.n_batches)
+        if n_samples <= dm.batch_size
+            n_batches = 1
+        else
+            n_batches = ceil(Int, n_samples / dm.batch_size)
+        end
+    else
+        n_batches = dm.n_batches
+    end
+    
+    # Calculate batch sizes (as even as possible)
+    batch_sizes = fill(div(n_samples, n_batches), n_batches)
+    remainder = n_samples % n_batches
+    for i in 1:remainder
+        batch_sizes[i] += 1
+    end
+    
+    # Create batches
+    result = Vector{Tuple{Array{eltype(x_data),3}, Array{eltype(y_data),3}}}(undef, n_batches)
+    start_idx = 1
+    for i in 1:n_batches
+        end_idx = start_idx + batch_sizes[i] - 1
+        result[i] = (x_data[:,:,start_idx:end_idx], y_data[:,:,start_idx:end_idx])
+        start_idx = end_idx + 1
+    end
+    
+    # Update batches in the manager
+    dm.current_batches = result
+    
+    return dm
+end
+
+"""
+    prepare_dataset(dataset="datasets"; 
+                   max_batch_size::Int=2^17, 
+                   batches::Union{Int,Nothing}=nothing, 
+                   shuffle::Bool=true, 
+                   rng=Random.default_rng())
+
+Prepare a dataset for FNO training by loading data from simulation results and creating a DatasetManager.
 
 # Arguments
 - `dataset`: Directory name containing simulation results (relative to project data directory)
@@ -205,21 +349,34 @@ Prepare a dataset for FNO training by loading data from simulation results and s
 - `rng`: Random number generator for shuffling
 
 # Returns
-Vector of (x_data, y_data) tuples, where each tuple represents a batch of training data.
+A DatasetManager that holds the dataset and provides batch management functionality.
 
 # Example
 ```julia
 # Get dataset with automatic batch sizing
-batched_data = prepare_dataset("my_simulations", max_batch_size=1000)
+data_manager = prepare_dataset("my_simulations", max_batch_size=1000)
 
 # Get dataset with specific number of batches
-batched_data = prepare_dataset("my_simulations", batches=5)
+data_manager = prepare_dataset("my_simulations", batches=5)
 
 # Get dataset without shuffling
-batched_data = prepare_dataset("my_simulations", shuffle=false)
+data_manager = prepare_dataset("my_simulations", shuffle=false)
+
+# Training with batch shuffling between epochs
+for epoch in 1:n_epochs
+    for (x, y) in data_manager.current_batches
+        # Train on batch
+    end
+    # Shuffle batches after epoch
+    shuffle_batches!(data_manager)
+end
 ```
 """
-function prepare_dataset(dataset="datasets"; max_batch_size::Int=2^17, batches::Union{Int,Nothing}=nothing, shuffle::Bool=true, rng=Random.default_rng())
+function prepare_dataset(dataset="datasets"; 
+                        max_batch_size::Int=2^17, 
+                        batches::Union{Int,Nothing}=nothing, 
+                        shuffle::Bool=true, 
+                        rng=Random.default_rng())
     df = collect_results(datadir(dataset))
     raw_datas = [sim_data_to_data_set(df.sim_data) for df in eachrow(df)]
     x_datas = [@view raw_data[:,:,1:end-1] for raw_data in raw_datas]
@@ -227,39 +384,13 @@ function prepare_dataset(dataset="datasets"; max_batch_size::Int=2^17, batches::
     combined_x_data = cat(x_datas..., dims=3)
     combined_y_data = cat(y_datas..., dims=3)
     
-    n_samples = size(combined_x_data, 3)
-    
-    # Shuffle data if requested
-    if shuffle
-        perm = randperm(rng, n_samples)
-        combined_x_data = combined_x_data[:,:,perm]
-        combined_y_data = combined_y_data[:,:,perm]
-    end
-    
-    # Determine number of batches
-    if isnothing(batches)
-        if n_samples <= max_batch_size
-            batches = 1
-        else
-            batches = ceil(Int, n_samples / max_batch_size)
-        end
-    end
-    
-    # Calculate batch sizes (as even as possible)
-    batch_sizes = fill(div(n_samples, batches), batches)
-    remainder = n_samples % batches
-    for i in 1:remainder
-        batch_sizes[i] += 1
-    end
-    
-    # Create batches
-    result = Vector{Tuple{Array{Float32,3}, Array{Float32,3}}}(undef, batches)
-    start_idx = 1
-    for i in 1:batches
-        end_idx = start_idx + batch_sizes[i] - 1
-        result[i] = (combined_x_data[:,:,start_idx:end_idx], combined_y_data[:,:,start_idx:end_idx])
-        start_idx = end_idx + 1
-    end
-    
-    return result
+    # Create dataset manager instead of directly creating batches
+    return DatasetManager(
+        combined_x_data, 
+        combined_y_data;
+        max_batch_size=max_batch_size,
+        batches=batches,
+        shuffle=shuffle,
+        rng=rng
+    )
 end

@@ -57,7 +57,7 @@ module RDEML
     include("fnos/data_gathering.jl")
     export get_data_policies, get_data_reset_strategies,
         collect_data, save_data, DataGatherer, DataSetInfo,
-        prepare_dataset, generate_data
+        prepare_dataset, generate_data, DatasetManager, shuffle_batches!
 
     include("fnos/fno.jl")
     export train!, FNO, FNOConfig
