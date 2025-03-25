@@ -9,4 +9,14 @@ end
 
 
 
-    
+function moving_average(x, window)
+    y = zeros(length(x))
+    for i in 1:length(x)
+        if i < window
+            y[i] = mean(x[1:i])
+        else
+            y[i] = mean(x[i-window+1:i])
+        end
+    end
+    return y
+end

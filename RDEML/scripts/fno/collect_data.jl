@@ -7,6 +7,7 @@ reset_strategies = get_data_reset_strategies()
 data_gatherer = DataGatherer(policies, reset_strategies, 10)
 ## Collect data
 generate_data(data_gatherer;)
-## Visualize data
+## Visualize data with run id 1
 df = collect_results(datadir("datasets"))
 visualize_data(df[df.run .== 1, :])
+

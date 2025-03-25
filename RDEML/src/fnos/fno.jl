@@ -1,7 +1,9 @@
 @kwdef struct TrainingHistory
-    losses::Vector{Float32} = []
+    losses::Vector{Float32} = []  # Training losses
+    test_losses::Vector{Float32} = []  # Test losses (optional)
     epochs::Vector{Int} = []
     learning_rates::Vector{Float32} = []
+    training_time::Vector{Float64} = []
 end
 
 function Base.show(io::IO, history::TrainingHistory)
@@ -13,8 +15,16 @@ function Base.show(io::IO, history::TrainingHistory)
         println(io, "         mean: $(mean(history.losses))")
         println(io, "         latest: $(history.losses[end])")
     end
+    if !isempty(history.test_losses)
+        println(io, "  test_losses: $(length(history.test_losses)) values ")
+        println(io, "         min: $(minimum(history.test_losses))")
+        println(io, "         max: $(maximum(history.test_losses))")
+        println(io, "         mean: $(mean(history.test_losses))")
+        println(io, "         latest: $(history.test_losses[end])")
+    end
     println(io, "  epochs=$(history.epochs),")
     println(io, "  learning_rates=$(history.learning_rates)")
+    println(io, "  training_time=$(history.training_time)")
     print(io, ")")
 end
 
@@ -40,49 +50,126 @@ function FNO(;chs=(3, 64, 64, 64, 2), modes=16, activation=gelu)
     return FourierNeuralOperator(activation; chs=chs, modes=(modes,), permuted=Val(true))
 end
 
+"""
+    evaluate_test_loss(model, ps, st, test_dataloader, dev)
 
-function train!(model, ps, st, data; lr = 3f-4, epochs=10, losses=[], dev=cpu_device(), AD=AutoZygote())
-    tstate = Training.TrainState(model, ps, st, OptimizationOptimisers.Adam(lr))
-    p = Progress(epochs*length(data.current_batches))
-    for epoch in 1:epochs
-        for (x, y) in dev(data.current_batches)
-            _, loss, _, tstate = Training.single_train_step!(AD, MSELoss(), (x, y),
-            tstate)
-            push!(losses, loss)
-            next!(p, showvalues=[("Loss", loss), ("Epoch", epoch)])
-        end
-        # Shuffle batches after each epoch
-        shuffle_batches!(data)
+Calculate the mean test loss over all batches in `test_dataloader`.
+"""
+function evaluate_test_loss(model, ps, st, test_dataloader, dev)
+    test_losses = Float32[]
+    cpu = cpu_device()
+    for (x_test, y_test) in test_dataloader
+
+        y_pred, _ = Lux.apply(model, x_test |> dev, ps, st) |> cpu
+        test_loss = MSELoss()(y_pred, y_test)
+        push!(test_losses, test_loss)
     end
+    return mean(test_losses)
+end
+
+"""
+    train!(model, ps, st, data; lr=3f-4, epochs=10, losses=[], test_data=nothing, test_losses=[], dev=cpu_device(), AD=AutoZygote())
+
+Train a model using the provided data and hyperparameters.
+
+# Arguments
+- `model`: The model to train
+- `ps`: Model parameters
+- `st`: Model state
+- `data`: DataLoader containing training data
+- `lr`: Learning rate
+- `epochs`: Number of epochs to train
+- `losses`: Vector to store training losses (will be modified in-place)
+- `test_data`: Optional DataLoader containing test data 
+- `test_losses`: Vector to store test losses (will be modified in-place)
+- `dev`: Device to use for training (CPU or GPU)
+- `AD`: Automatic differentiation backend
+"""
+function train!(model, ps, st, data::DataLoader; 
+                lr = 3f-4, 
+                epochs=10, 
+                losses=[], 
+                test_data=nothing, 
+                test_losses=[], 
+                dev=cpu_device(), 
+                AD=AutoZygote())
+    
+    tstate = Training.TrainState(model, ps, st, OptimizationOptimisers.Adam(lr))
+    
+    # Configure progress bar
+    has_test = !isnothing(test_data)
+    p = Progress(epochs*length(data))
+    
+    for epoch in 1:epochs
+        # Training loop
+        epoch_losses = Float32[]
+        for (x, y) in dev(data)
+            _, loss, _, tstate = Training.single_train_step!(AD, MSELoss(), (x, y), tstate)
+            push!(losses, loss)
+            push!(epoch_losses, loss)
+            
+            # Update progress bar
+            next!(p, showvalues=[("Train Loss", loss), ("Epoch", epoch), "Test Loss" => isempty(test_losses) ? NaN : test_losses[end]])
+        end
+        
+        # Evaluate on test set after each epoch if available
+        if has_test
+            test_loss = evaluate_test_loss(model, tstate.parameters, tstate.states, test_data, dev)
+            push!(test_losses, test_loss)
+        end
+    end
+    
     return losses
 end
 
-function train!(config::FNOConfig, data, 
-     lr::Number,
-     epochs::Int;
-     dev=cpu_device(),
-     AD=AutoZygote()
-    )
+"""
+    train!(config::FNOConfig, data, lr::Number, epochs::Int; kwargs...)
+
+Train an FNO model using the provided data and hyperparameters.
+"""
+function train!(config::FNOConfig, data::DataLoader, 
+                lr::Number,
+                epochs::Int;
+                test_data=nothing,
+                dev=cpu_device(),
+                AD=AutoZygote()
+               )
     config.ps = config.ps |> dev
     config.st = config.st |> dev
     model = FNO(config)
     hist = config.history
-    train!(model, config.ps, config.st, data; losses=hist.losses, lr, epochs, dev, AD)
+    
+    train_time = @elapsed train!(
+        model, config.ps, config.st, data;
+        losses=hist.losses, 
+        test_data=test_data,
+        test_losses=hist.test_losses,
+        lr, epochs, dev, AD)
     push!(hist.learning_rates, lr)
     push!(hist.epochs, epochs)
+    push!(hist.training_time, train_time)
+    
     return nothing
 end
 
-function train!(config::FNOConfig, data,
-     lr::AbstractArray{<:Real},
-     epochs::AbstractArray{<:Int};
-     dev=cpu_device(),
-     AD=AutoZygote()
-    )
+"""
+    train!(config::FNOConfig, data, lr::AbstractArray{<:Real}, epochs::AbstractArray{<:Int}; kwargs...)
+
+Train an FNO model using multiple learning rates and epoch counts.
+"""
+function train!(config::FNOConfig, data::DataLoader,
+                lr::AbstractArray{<:Real},
+                epochs::AbstractArray{<:Int};
+                test_data=nothing,
+                dev=cpu_device(),
+                AD=AutoZygote()
+               )
     @assert length(lr) == length(epochs) "lr and epochs must have the same length"
-    for (lr, epochs) in zip(lr, epochs)
-        train!(config, data, lr, epochs; dev, AD)
+    
+    for (lr_i, epochs_i) in zip(lr, epochs)
+        train!(config, data, lr_i, epochs_i; test_data=test_data, dev=dev, AD=AD)
     end
+    
     return nothing
 end
 

@@ -19,6 +19,7 @@ module RDEML
     using ProgressMeter
     @reexport using Random
     using Statistics
+    using MLUtils
 
     ##PINN functions
     # Include submodules
@@ -57,10 +58,12 @@ module RDEML
     include("fnos/data_gathering.jl")
     export get_data_policies, get_data_reset_strategies,
         collect_data, save_data, DataGatherer, DataSetInfo,
-        prepare_dataset, generate_data, DatasetManager, shuffle_batches!
+        prepare_dataset, generate_data, shuffle_batches!,
+        number_of_samples, calculate_number_of_batches,
+        FNODataset, create_dataloader
 
     include("fnos/fno.jl")
-    export train!, FNO, FNOConfig
+    export train!, FNO, FNOConfig, number_of_batches
 
     include("fnos/visualization.jl")
     export plot_losses, visualize_data, plot_test_comparison
@@ -72,6 +75,6 @@ module RDEML
     export fnoconfig_to_dict, dict_to_fnoconfig
 
     include("fnos/utils.jl")
-    export train_and_save!
+    export train_and_save!, moving_average
 
 end # module 

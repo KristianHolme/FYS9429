@@ -14,49 +14,68 @@ function visualize_data(df, env=make_env(); save_plots=false, display_plots=true
     end
 end
 
-"""
-    plot_losses(losses; title="Losses")
 
-Plot training losses with smoothed trend line and confidence bands.
-
-# Arguments
-- `losses`: Vector of loss values recorded during training
-- `title`: Title for the plot (default: "Losses")
-
-# Details
-This function visualizes training losses with:
-1. A smoothed trend line using a rolling mean with window size of 50
-2. Confidence bands showing the 5th to 95th percentile range of loss values in each window
-
-The confidence bands help visualize the volatility/variance of the loss values:
-- `upper`: 95th percentile of losses in each rolling window, showing the upper bound of typical losses
-- `lower`: 5th percentile of losses in each rolling window, showing the lower bound of typical losses
-
-The log-scaled axes help visualize improvements that occur at different orders of magnitude.
-
-# Returns
-- `fig`: A Makie Figure object containing the plot
-"""
-function plot_losses(losses; title="Losses")
+function plot_losses(fno_config::FNOConfig; 
+                     saveplot=false, 
+                     folder="", 
+                     title="Losses",
+                     x_axis_mode=:steps,
+                     include_test_losses=true,
+                     window_size=50,
+                     plot_confidence_bands=true,
+                     train_color=:blue,
+                     test_color=:red,
+                     kwargs...)
+    
+    subtitle = "FNO config: $(fno_config.chs), $(fno_config.modes), $(fno_config.activation)"
+    history = fno_config.history
+    losses = history.losses
+    epochs = history.epochs
+    test_losses = history.test_losses
+    
     fig = Figure()
-    Label(fig[0, 1], title, tellwidth=false, fontsize=18)
-    ax = Makie.Axis(fig[1, 1], xlabel="Epoch", ylabel="Loss", xscale=log10, yscale=log10)
+    Label(fig[1, 1], title, tellwidth=false, tellheight=true, fontsize=18)
+    Label(fig[end+1, 1], subtitle, tellwidth=false, tellheight=true, fontsize=12)
+    
+    # Determine x-axis label based on mode
+    x_label = "Epoch"
+    ax = Makie.Axis(fig[end+1, 1], xlabel=x_label, ylabel="Loss", yscale=log10)
+    
+    # Calculate x values based on mode
+    @info "epochs: $(sum(epochs)), length(losses): $(length(losses))"
+    x_train = collect(1:length(losses)) ./ length(losses) .* sum(epochs)
 
-    # Calculate smoothed line and confidence bands
-    window_size = 50
+    
+    # Calculate smoothed line and confidence bands for training losses
+    window_size = min(window_size, length(losses))
     smoothed = [mean(losses[max(1,i-window_size):i]) for i in 1:length(losses)]
-    upper = [quantile(losses[max(1,i-window_size):i], 0.95) for i in 1:length(losses)]
-    lower = [quantile(losses[max(1,i-window_size):i], 0.05) for i in 1:length(losses)]
-
-    # Plot bands and smoothed line
-    band!(ax, 1:length(losses), lower, upper, color=(:blue, 0.2))
-    lines!(ax, smoothed, color=:blue, linewidth=2)
-    return fig
-end
-
-function plot_losses(fno_config::FNOConfig;saveplot=false, folder="")
-    title = "Losses for $(fno_config.chs), $(fno_config.modes), $(fno_config.activation)"
-    fig = plot_losses(fno_config.history.losses; title)
+    @info "lenght losses: $(length(losses))"
+    # Plot training loss
+    if plot_confidence_bands && length(losses) > window_size
+        upper = [quantile(losses[max(1,i-window_size):i], 0.95) for i in 1:length(losses)]
+        lower = [quantile(losses[max(1,i-window_size):i], 0.05) for i in 1:length(losses)]
+        @info "x_train: $(size(x_train)), upper: $(size(upper)), lower: $(size(lower))"
+        band!(ax, x_train, lower, upper, color=(train_color, 0.2))
+    end
+    
+    train_line = lines!(ax, x_train, smoothed, color=train_color, linewidth=2)
+    
+    # Plot test losses if provided
+    if !isnothing(test_losses) && !isempty(test_losses)
+        # For test losses, x values are epochs (1-based)
+        x_test = collect(1:length(test_losses)) ./ length(test_losses) .* sum(epochs)
+        test_line = lines!(ax, x_test, test_losses, color=test_color, linewidth=2, linestyle=:dash)
+        
+        # Add legend
+        axislegend(ax, 
+            [train_line, test_line], 
+            ["Training Loss", "Test Loss"],
+            tellwidth=false,
+            orientation=:horizontal,
+            position=:rt)
+    end
+    
+    
     if saveplot
         path = plotsdir("fno", folder, savename(fno_config, "svg"))
         if !isdir(plotsdir("fno", folder))
@@ -64,6 +83,7 @@ function plot_losses(fno_config::FNOConfig;saveplot=false, folder="")
         end
         save(path, fig)
     end
+    
     return fig
 end
 

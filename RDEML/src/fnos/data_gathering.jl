@@ -198,185 +198,106 @@ function sim_data_to_data_set(sim_data::PolicyRunData)
 end
 
 """
-    DatasetManager{T<:AbstractFloat}
+    FNODataset{T<:AbstractFloat}
 
-Manages dataset batches with support for shuffling between epochs.
-
-# Fields
-- `raw_x_data`: Original unbatched feature data
-- `raw_y_data`: Original unbatched target data
-- `current_batches`: Current batched data as vector of (x,y) tuples
-- `batch_size`: Size of individual batches (if specified)
-- `n_batches`: Number of batches (if specified)
-- `rng`: Random number generator for shuffling
+A dataset structure for FNO training that manages raw data and provides flexible DataLoader creation.
 """
-mutable struct DatasetManager{T<:AbstractFloat}
-    raw_x_data::Array{T,3}           # Original unbatched x data
-    raw_y_data::Array{T,3}           # Original unbatched y data
-    current_batches::Vector{Tuple{Array{T,3}, Array{T,3}}}  # Current batched data
-    batch_size::Union{Int, Nothing}
-    n_batches::Union{Int, Nothing}
-    rng::AbstractRNG
-    
-    function DatasetManager(raw_x_data::Array{T,3}, raw_y_data::Array{T,3};
-                            max_batch_size::Int=2^17,
-                            batches::Union{Int,Nothing}=nothing,
-                            shuffle::Bool=true,
-                            rng=Random.default_rng()) where {T<:AbstractFloat}
-        
-        # Create initial batches
-        manager = new{T}(raw_x_data, raw_y_data, [], 
-                        (isnothing(batches) ? max_batch_size : nothing), 
-                        batches, rng)
-        
-        # Generate initial batch arrangement
-        shuffle_batches!(manager, shuffle=shuffle)
-        
-        return manager
-    end
+struct FNODataset{T<:AbstractFloat}
+    raw_x_data::Array{T,3}  # Original unbatched x data
+    raw_y_data::Array{T,3}  # Original unbatched y data
 end
 
-function Base.show(io::IO, dm::DatasetManager)
+function Base.show(io::IO, ds::FNODataset)
     if get(io, :compact, false)::Bool
-        print(io, "DatasetManager($(length(dm.current_batches)) batches)")
+        print(io, "FNODataset($(size(ds.raw_x_data, 3)) samples)")
     else
-        print(io, "DatasetManager($(length(dm.current_batches)) batches, $(size(dm.raw_x_data, 3)) samples)")
+        print(io, "FNODataset($(size(ds.raw_x_data, 3)) samples, $(size(ds.raw_x_data, 1))×$(size(ds.raw_x_data, 2))×$(size(ds.raw_x_data, 3)))")
     end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", dm::DatasetManager{T}) where {T}
-    println(io, "DatasetManager{$T}:")
-    println(io, "  samples: $(size(dm.raw_x_data, 3))")
-    println(io, "  batches: $(length(dm.current_batches))")
-    println(io, "  features shape: $(size(dm.raw_x_data))")
-    println(io, "  targets shape: $(size(dm.raw_y_data))")
-    if !isnothing(dm.batch_size)
-        println(io, "  batch size: $(dm.batch_size)")
-    elseif !isnothing(dm.n_batches)
-        println(io, "  fixed batch count: $(dm.n_batches)")
-    end
+function Base.show(io::IO, ::MIME"text/plain", ds::FNODataset{T}) where {T}
+    println(io, "FNODataset{$T}:")
+    println(io, "  samples: $(size(ds.raw_x_data, 3))")
+    println(io, "  features shape: $(size(ds.raw_x_data))")
+    println(io, "  targets shape: $(size(ds.raw_y_data))")
 end
 
 """
-    shuffle_batches!(dm::DatasetManager; shuffle::Bool=true)
+    create_dataloader(dataset::FNODataset; batch_size=2048, shuffle=true, parallel=true, rng=Random.default_rng())
 
-Regenerate batches for the dataset, optionally with shuffling.
-
-# Arguments
-- `dm::DatasetManager`: The dataset manager to update
-- `shuffle::Bool=true`: Whether to shuffle data before creating batches
-- `max_batch_size::Union{Int,Nothing}=nothing`: Optional new max batch size
-- `batches::Union{Int,Nothing}=nothing`: Optional new number of batches
-
-# Returns
-The updated DatasetManager
+Create a DataLoader from the raw dataset with the specified configuration.
 """
-function shuffle_batches!(dm::DatasetManager; 
-                         shuffle::Bool=true,
-                         max_batch_size::Union{Int,Nothing}=nothing,
-                         batches::Union{Int,Nothing}=nothing)
-    
-    # Update batch parameters if provided
-    if !isnothing(max_batch_size)
-        dm.batch_size = max_batch_size
-        dm.n_batches = nothing
-    end
-    if !isnothing(batches)
-        dm.n_batches = batches
-        dm.batch_size = nothing
-    end
-    
-    # Get data dimensions
-    n_samples = size(dm.raw_x_data, 3)
-    
-    # Create shuffled indices if requested
-    if shuffle
-        indices = randperm(dm.rng, n_samples)
-        x_data = dm.raw_x_data[:,:,indices]
-        y_data = dm.raw_y_data[:,:,indices]
-    else
-        x_data = dm.raw_x_data
-        y_data = dm.raw_y_data
-    end
-    
-    # Determine number of batches
-    if isnothing(dm.n_batches)
-        if n_samples <= dm.batch_size
-            n_batches = 1
-        else
-            n_batches = ceil(Int, n_samples / dm.batch_size)
-        end
-    else
-        n_batches = dm.n_batches
-    end
-    
-    # Calculate batch sizes (as even as possible)
-    batch_sizes = fill(div(n_samples, n_batches), n_batches)
-    remainder = n_samples % n_batches
-    for i in 1:remainder
-        batch_sizes[i] += 1
-    end
-    
-    # Create batches
-    result = Vector{Tuple{Array{eltype(x_data),3}, Array{eltype(y_data),3}}}(undef, n_batches)
-    start_idx = 1
-    for i in 1:n_batches
-        end_idx = start_idx + batch_sizes[i] - 1
-        result[i] = (x_data[:,:,start_idx:end_idx], y_data[:,:,start_idx:end_idx])
-        start_idx = end_idx + 1
-    end
-    
-    # Update batches in the manager
-    dm.current_batches = result
-    
-    return dm
+function create_dataloader(dataset::FNODataset; 
+                         batch_size::Int=2048, 
+                         shuffle::Bool=true, 
+                         parallel::Bool=true,
+                         rng=Random.default_rng())
+    return DataLoader((dataset.raw_x_data, dataset.raw_y_data); 
+                    batchsize=batch_size, 
+                    shuffle=shuffle, 
+                    parallel=parallel,
+                    rng=rng)
+end
+
+function number_of_samples(ds::FNODataset)
+    return size(ds.raw_x_data, 3)
+end
+
+function calculate_number_of_batches(n_samples::Int, batch_size::Int)
+    return div(n_samples, batch_size) + (n_samples % batch_size > 0 ? 1 : 0)
+end
+
+function calculate_number_of_batches(ds::FNODataset, batch_size::Int)
+    n_samples = number_of_samples(ds)
+    return calculate_number_of_batches(n_samples, batch_size)
 end
 
 """
     prepare_dataset(dataset="datasets"; 
-                   max_batch_size::Int=2^17, 
-                   batches::Union{Int,Nothing}=nothing, 
-                   shuffle::Bool=true, 
-                   rng=Random.default_rng())
+                    batch_size=2048, 
+                    shuffle=true,
+                    parallel=true,
+                    rng=Random.default_rng(),
+                    create_loader=true,
+                    test_split=0.2)
 
-Prepare a dataset for FNO training by loading data from simulation results and creating a DatasetManager.
+Prepare a dataset for FNO training by loading data from simulation results.
 
 # Arguments
 - `dataset`: Directory name containing simulation results (relative to project data directory)
-- `max_batch_size`: Maximum number of samples per batch (used if `batches` is not specified)
-- `batches`: Optional specific number of batches to create (overrides max_batch_size if provided)
+- `batch_size`: Number of samples per batch (used to create a DataLoader if requested)
 - `shuffle`: Whether to randomly shuffle the data before batching
+- `parallel`: Whether to use parallel data loading
 - `rng`: Random number generator for shuffling
+- `create_loader`: Whether to create and return a DataLoader (true) or just the FNODataset (false)
+- `test_split`: Fraction of data to use for testing (between 0 and 1)
 
 # Returns
-A DatasetManager that holds the dataset and provides batch management functionality.
+If `test_split` is 0, returns a single dataset or dataloader.
+If `test_split` is > 0, returns a tuple (train_data, test_data) where each is either an FNODataset 
+or a DataLoader depending on the value of `create_loader`.
 
 # Example
 ```julia
-# Get dataset with automatic batch sizing
-data_manager = prepare_dataset("my_simulations", max_batch_size=1000)
+# Get raw datasets with train/test split
+train_data, test_data = prepare_dataset("my_simulations", create_loader=false, test_split=0.2)
 
-# Get dataset with specific number of batches
-data_manager = prepare_dataset("my_simulations", batches=5)
+# Create different loaders with different batch sizes
+train_loader = create_dataloader(train_data, batch_size=128)
+test_loader = create_dataloader(test_data, batch_size=512)
 
-# Get dataset without shuffling
-data_manager = prepare_dataset("my_simulations", shuffle=false)
-
-# Training with batch shuffling between epochs
-for epoch in 1:n_epochs
-    for (x, y) in data_manager.current_batches
-        # Train on batch
-    end
-    # Shuffle batches after epoch
-    shuffle_batches!(data_manager)
-end
+# Or get loaders directly
+train_loader, test_loader = prepare_dataset("my_simulations", batch_size=256, test_split=0.2)
 ```
 """
 function prepare_dataset(dataset="datasets"; 
-                        max_batch_size::Int=2^17, 
-                        batches::Union{Int,Nothing}=nothing, 
-                        shuffle::Bool=true, 
-                        rng=Random.default_rng())
+                        batch_size::Int=2048, 
+                        shuffle::Bool=true,
+                        parallel::Bool=true,
+                        rng=Random.default_rng(),
+                        create_loader::Bool=true,
+                        test_split::Float64=0.0,
+                        test_batch_size::Int=2^12)
     df = collect_results(datadir(dataset))
     raw_datas = [sim_data_to_data_set(df.sim_data) for df in eachrow(df)]
     x_datas = [@view raw_data[:,:,1:end-1] for raw_data in raw_datas]
@@ -384,13 +305,68 @@ function prepare_dataset(dataset="datasets";
     combined_x_data = cat(x_datas..., dims=3)
     combined_y_data = cat(y_datas..., dims=3)
     
-    # Create dataset manager instead of directly creating batches
-    return DatasetManager(
-        combined_x_data, 
-        combined_y_data;
-        max_batch_size=max_batch_size,
-        batches=batches,
-        shuffle=shuffle,
-        rng=rng
+    # If no test split is requested, return the entire dataset
+    if test_split ≤ 0.0
+        dataset = FNODataset(combined_x_data, combined_y_data)
+        
+        # Return either the raw dataset or a configured DataLoader
+        if create_loader
+            return create_dataloader(dataset; test_batch_size, shuffle, parallel, rng)
+        else
+            return dataset
+        end
+    end
+    
+    # Otherwise, split the data into train and test sets
+    n_samples = size(combined_x_data, 3)
+    n_test = round(Int, test_split * n_samples)
+    n_train = n_samples - n_test
+    
+    # Create shuffled indices for splitting
+    indices = shuffle ? randperm(rng, n_samples) : collect(1:n_samples)
+    train_indices = indices[1:n_train]
+    test_indices = indices[n_train+1:end]
+    
+    # Create train and test datasets
+    train_dataset = FNODataset(
+        combined_x_data[:,:,train_indices], 
+        combined_y_data[:,:,train_indices]
     )
+    
+    test_dataset = FNODataset(
+        combined_x_data[:,:,test_indices], 
+        combined_y_data[:,:,test_indices]
+    )
+    
+    if create_loader
+        train_loader = create_dataloader(train_dataset; batch_size, shuffle, parallel, rng)
+        # For test data, we typically don't need shuffling
+        test_loader = create_dataloader(test_dataset; batch_size, shuffle=false, parallel, rng)
+        return train_loader, test_loader
+    else
+        return train_dataset, test_dataset
+    end
+end
+
+# Compatibility aliases for transition period
+"""
+    shuffle_batches!(dataset::FNODataset; batch_size=nothing, shuffle=true, parallel=true, rng=Random.default_rng())
+
+Create a new DataLoader for the dataset with the specified batch size.
+This function provides backward compatibility with the old DatasetManager API.
+"""
+function shuffle_batches!(dataset::FNODataset; 
+                        batch_size::Union{Int,Nothing}=nothing,
+                        shuffle::Bool=true,
+                        parallel::Bool=true,
+                        rng=Random.default_rng())
+    if isnothing(batch_size)
+        batch_size = 2048  # Default batch size
+    end
+    return create_dataloader(dataset; batch_size, shuffle, parallel, rng)
+end
+
+# For backward compatibility - returns the number of batches that would be created with the given batch size
+function number_of_batches(ds::FNODataset, batch_size::Int)
+    return calculate_number_of_batches(ds, batch_size)
 end
