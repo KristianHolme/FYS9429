@@ -311,7 +311,7 @@ function prepare_dataset(dataset="datasets";
         
         # Return either the raw dataset or a configured DataLoader
         if create_loader
-            return create_dataloader(dataset; test_batch_size, shuffle, parallel, rng)
+            return create_dataloader(dataset; batch_size, shuffle, parallel, rng)
         else
             return dataset
         end
@@ -341,7 +341,7 @@ function prepare_dataset(dataset="datasets";
     if create_loader
         train_loader = create_dataloader(train_dataset; batch_size, shuffle, parallel, rng)
         # For test data, we typically don't need shuffling
-        test_loader = create_dataloader(test_dataset; batch_size, shuffle=false, parallel, rng)
+        test_loader = create_dataloader(test_dataset; batch_size=test_batch_size, shuffle=false, parallel, rng)
         return train_loader, test_loader
     else
         return train_dataset, test_dataset

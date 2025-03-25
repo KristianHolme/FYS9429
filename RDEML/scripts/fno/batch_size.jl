@@ -14,7 +14,7 @@ const gdev = gpu_device()
 ## Load data with train/test split
 train_dataset, test_dataset = prepare_dataset(create_loader=false, test_split=0.2, rng=rng)
 
-test_loader = create_dataloader(test_dataset; batch_size=number_of_samples(test_dataset), shuffle=false)
+test_loader = create_dataloader(test_dataset; batch_size=2^12, shuffle=false)
 ## Run experiments
 for (i, batch_size) in enumerate(batch_size_list)
     # Create dataloaders with the current batch size
