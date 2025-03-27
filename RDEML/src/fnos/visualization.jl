@@ -121,3 +121,150 @@ function plot_test_comparison(;n_t, x, test_data, predicted_states, timesteps=[1
     
     return fig
 end
+
+function plot_parameter_analysis(df, param_name::String; 
+    title="Parameter Analysis",
+    xlabel="Parameter Value",
+    ylabel="Final Test Loss",
+    window_fraction=0.1,
+    save_plots=false,
+    experiment_name="parameter_analysis")
+    
+    param_list = sort(unique(df[!, Symbol(param_name)])) |> Vector{Int}
+    
+    fig = Figure(size=(1000, 600))
+    
+    # First plot - Loss history
+    ax1 = Axis(fig[1, 1], xlabel="Epoch", ylabel="Loss (moving average)", yscale=log10)
+    for (i, row) in enumerate(eachrow(df))
+        config = row.full_config
+        losses = config.history.losses
+        total_epochs = sum(config.history.epochs)
+        n_batches = length(losses) ÷ total_epochs
+        training_progress = collect(1:length(losses)) ./ length(losses)
+        epochs = training_progress .* total_epochs
+        
+        # Get color for this parameter value
+        param_value = row[Symbol(param_name)]
+        color_idx = indexin(param_value, param_list)[1]
+        color = Makie.wong_colors()[color_idx]
+        
+        # Plot line
+        line = lines!(ax1, epochs, moving_average(losses, Int(floor(length(losses) * window_fraction))), color=color)
+        # plot test loss
+        test_losses = config.history.test_losses
+        lines!(ax1, 1:total_epochs, test_losses, color=color, linestyle=:dash)
+    end
+    ax1_lines = [LineElement(color=:black, linestyle=:solid), LineElement(color=:black, linestyle=:dash)]
+    axislegend(ax1, ax1_lines, ["Train Loss", "Test Loss"], position=:rt)
+    
+    # Second plot - Individual end loss barplot
+    ax2 = Axis(fig[1, 2], 
+        xlabel=xlabel, 
+        ylabel=ylabel, 
+        yscale=log10,
+        xticks = (1:length(param_list), string.(param_list)))
+    
+    # Collect final losses and parameter values
+    final_train_losses = collect(df.final_train_loss) |> Vector{Float32}
+    final_test_losses = collect(df.final_test_loss) |> Vector{Float32}
+    param_values = collect(df[!, Symbol(param_name)]) |> Vector{Int}
+    group = [indexin(value, param_list)[1] for value in param_values]
+    run_id = collect(df.run) |> Vector{Int}
+    
+    wcolors = Makie.wong_colors()[1:length(param_list)]
+    colors = wcolors[group]
+    barplot!(ax2, group, final_test_losses, 
+        dodge=run_id, color = colors)
+    
+    # Calculate mean loss for each parameter group
+    for (i, param_value) in enumerate(param_list)
+        group_losses = final_test_losses[group .== i]
+        mean_loss = mean(group_losses)
+        errorbars!(ax2, [i], [mean_loss], [0.38f0], color=:black, linewidth=2, direction=:x)
+    end
+    mean_element = LineElement(color=:black, linewidth=2)
+    axislegend(ax2, [mean_element], ["Mean Loss"], position=:lt)
+    
+    if save_plots
+        dir = plotsdir("fno", experiment_name)
+        if !isdir(dir)
+            mkdir(dir)
+        end
+        save(joinpath(dir, "$(param_name)_analysis.svg"), fig)
+        save(joinpath(dir, "$(param_name)_analysis.png"), fig)
+    end
+    
+    return fig
+end
+
+function plot_training_time_analysis(df, param_name::String; 
+    title="Training Time Analysis",
+    xlabel="Parameter Value",
+    ylabel="Training Time (seconds)",
+    save_plots=false,
+    experiment_name="parameter_analysis")
+    
+    param_list = sort(unique(df[!, Symbol(param_name)])) |> Vector{Int}
+    
+    fig = Figure(size=(1000, 600))
+    
+    # First plot - Training time vs parameter value
+    ax1 = Axis(fig[1, 1], 
+        xlabel=xlabel, 
+        ylabel=ylabel,
+        xticks = (1:length(param_list), string.(param_list)))
+    
+    # Collect training times and parameter values
+    param_values = collect(df[!, Symbol(param_name)]) |> Vector{Int}
+    run_id = collect(df.run) |> Vector{Int}
+    
+    # Get training times for each learning rate and epoch combination
+    training_times = Float32[]
+    training_periods = Int[]
+    runs = Int[]
+    group = Int[]
+
+    for (i, row) in enumerate(eachrow(df))
+        config = row.full_config
+        times = config.history.training_time
+        push!(training_times, times...)
+        push!(training_periods, collect(1:length(times))...)
+        push!(runs, fill(run_id[i], length(times))...)
+        push!(group, fill(indexin(param_values[i], param_list)[1], length(times))...)
+    end
+    @show typeof(training_times), typeof(training_periods), typeof(runs), typeof(group)
+    @show size(training_times), size(training_periods), size(runs), size(group)
+    
+    # Create stacked barplot
+    wcolors = Makie.wong_colors()[1:length(param_list)]
+    colors = wcolors[group]
+    
+
+    barplot!(ax1, group, training_times,
+        stack=training_periods,
+        dodge=runs,
+        color=colors)
+    
+    # Calculate mean total training time for each parameter group
+    total_times = [sum(times) for times in training_times]
+    for (i, param_value) in enumerate(param_list)
+        group_times = total_times[group .== i]
+        mean_time = mean(group_times)
+        errorbars!(ax1, [i], [mean_time], [0.38f0], color=:black, linewidth=2, direction=:x)
+    end
+    mean_element = LineElement(color=:black, linewidth=2)
+    axislegend(ax1, [mean_element], ["Mean Total Time"], position=:lt)
+    
+    
+    if save_plots
+        dir = plotsdir("fno", experiment_name)
+        if !isdir(dir)
+            mkdir(dir)
+        end
+        save(joinpath(dir, "$(param_name)_training_time_analysis.svg"), fig)
+        save(joinpath(dir, "$(param_name)_training_time_analysis.png"), fig)
+    end
+    
+    return fig
+end
