@@ -1,0 +1,143 @@
+---
+title: "Investigating Fourier Neural Operators for accelerating Deep Reinforcement Learning"
+#TODO: change title
+author: "Kristian Holme"
+date: today
+format: html
+editor: 
+    render-on-save: true
+bibliography: references.bib
+---
+
+## Abstract
+
+## Introduction
+
+Active flow control has traditionally been handled by classical control algorithms with reasonable success. However, the complex, nonlinear nature of fluid flows presents opportunities for improvement that can be exploited by sophisticated neural networks. Reinforcement Learning (RL) is emerging as a promising approach in this field, offering potential advantages through its ability to learn optimal control policies, although it remains computationally demanding.
+
+Computational Fluid Dynamics (CFD) simulations are particularly expensive to run, and RL agents sometimes require numerous ($O(10^5)$ to $O(10^7)$) interactions to learn effective strategies. This highlights the critical importance of sample efficiency—extracting more knowledge from less data. Fourier Neural Operators (FNO) represent a novel class of operators capable of learning to approximate solution operators in partial differential equations. These operators are characterized by their rapid evaluation times, high accuracy, and ability to capture underlying system dynamics. As such, FNOs can be leveraged to accelerate RL training by learning the solution operator given a state and control input. This approach enables solving PDEs directly through the FNO rather than through time-consuming classical simulations, potentially offering significant speedups in the training processes.
+
+This project focuses on a small exploratory investigation of Fourier Neural Operators applied to the control of a one-dimensional wave propagation model. The model choice stems from work conducted prior to this course, providing continuity and established domain knowledge. We explore the possibility of using Fourier Neural Operators as a substitute for a traditional finite difference solver.
+
+## Background
+
+This section provides the theoretical foundation and context necessary to understand the intersection of reinforcement learning, Fourier neural operators, and rotating detonation engines that form the basis of this project.
+
+### Deep Reinforcement Learning
+
+Reinforcement Learning (RL) is a framework for learning optimal control policies where an agent learns through trial and error by interacting with an environment. In this paradigm, the agent receives an observation of the environment's state and produces an action based on its current policy. The environment then updates according to this action, after which the agent receives a new observation along with a reward signal. This reward enables the agent to update its strategy, with the ultimate goal of learning a policy that maximizes cumulative rewards over time. The field encompasses various methodological approaches, including on-policy versus off-policy learning, and model-based versus model-free techniques. Notable algorithms in this space include Proximal Policy Optimization (PPO), Deep Q-Networks (DQN), Soft Actor-Critic (SAC), and Trust Region Policy Optimization (TRPO). @fig-rl-loop shows a schematic of the RL loop.
+
+![Schematic of the Reinforcement Learning loop. The agent observes the environment, takes an action, and receives a reward. This process is repeated until the agent learns a policy that maximizes the cumulative reward.](figures/DRL-loop.drawio.svg){#fig-rl-loop}
+
+### Fourier Neural Operators
+
+Fourier Neural Operators (FNO) represent a novel class of operators designed to learn approximations of solution operators in partial differential equations. Instead of modeling the solution function directly, i.e. approximating $u(x, t)$ by $u_\theta(x, t)$, as is the approach taken by Physics-Informed Neural Networks (PINNs), FNOs learn the solution operator, $\mathcal{G}: (u(x, t_i), \lambda(x, t_i), u_p(x, t_i)) \mapsto (u(x, t_{i+1}), \lambda(x, t_{i+1}))$, which is a function that maps a state and control input to a subsequent state. These operators offer significant advantages through their fast evaluation times, high accuracy, and ability to capture the underlying dynamics of complex systems.
+
+In the context of reinforcement learning, FNOs can be leveraged to accelerate training by learning the solution operator that maps state and control inputs to subsequent states. This approach creates a more efficient alternative to traditional simulation: instead of sending actions directly to the environment, control inputs are processed by the FNO, which predicts the resulting next state. This predicted state can then be used to calculate rewards and update the policy, potentially circumventing the need for expensive simulations during training.
+
+![Schematic of the Fourier Neural Operator. Adapted from [@li]](figures/fno.drawio.svg){#fig-fno}
+
+### Rotating Detonation Engine
+
+A Rotating Detonation Combustion (RDC) device is a device that uses a detonation wave in an annular chamber to generate thrust. It has several applications, including propulsion and power generation[@anand2019]. When used as a propulsion device, the RDC is referred to as a Rotating Detonation Engine (RDE) [see @fig-rde-live]. RDEs are relatively new, but have been used on a small scale for propulsion applications, including on a space mission in 2021[@theworl].
+
+![An Active RDE. Credit: NASA](images/2048px-NASA_RDE.jpg){#fig-rde-live}
+
+In this study, the RDE is modeled as a one-dimensional system of dimensionless partial differential equations (PDEs), as described in [@koch2020; @koch2021]:
+
+\begin{align}
+    u_t + uu_x &= (1-\lambda)\omega(u)q_0 + \nu_1 u_{xx} + \epsilon \xi(u, u_0) \\
+    \lambda_t &= (1-\lambda)\omega(u) - \beta(u, u_p, s)\lambda + \nu_2\lambda_{xx}
+\end{align}
+
+where
+
+\begin{align}
+    \omega(u) &= e^{\frac{u-u_c}{\alpha}}, \\
+    \xi(u, u_0) &= (u_0-u)u^n, \text{ and } \\
+    \beta(u, s) &= \frac{su_p}{1+e^{k(u-u_p)}}
+\end{align}
+
+This model as been shown accurately mimic the qualitative behavior of detonation waves in RDEs. It is highly general, and by tuning the parameters it can be made to mimic different RDE configurations[@koch2021a; @mendible2021].
+
+The model tracks two primary variables. $u$ represents flow properties, can be thought of as energy or pressure. $\lambda$ represents fuel consumption, that is, when $\lambda(x) = 0$ the maximum amount of fuel is present at $x$, and when $\lambda(x) = 1$ all the fuel is consumed at $x$. The injection pressure $u_p$ serves as the control parameter. All other parameters are given in @tbl-rde-params.
+
+| Parameter | $\mu_1$ | $\mu_2$ | $u_c$ | $\alpha$ | $q_0$ | $u_0$ | $n$ | $k$ | $s$ | $\epsilon$ |
+|-------|-------|-------|-------|-------|-------|-------|-------|-------|-------|-------|
+| Value     | 0.0075  | 0.0075  | 1.1   | 0.3      | 1.0   | 0.0   | 1   | 5.0 | 3.5 | 0.15       |
+
+: RDE parameters {#tbl-rde-params}
+
+The detonation wave manifests as a shock wave traveling circumferentially around the engine's cylindrical chamber. Control of the engine is achieved by modulating the injection pressure, which influences the wave dynamics. Performance evaluation of an RL agent is herein based on a weighted combination of different metrics, including wave span, periodicity, shock spacing, and the number of shock waves present. Notably, reinforcement learning agents can be trained to achieve specific objectives related to the number of shocks in the system. @fig-rde-sim shows a simulation of the RDE with step-wise changes in injection pressure. We observe that changing the pressure forces a change in the number of shock waves present, and the amplitude of the shock waves. The simulation starts with an initial "bump" configuration ($u(x) = \frac{3}{2} \text{sech}^{20}(x - 1)$) that is destabilized after the first pressure change. After a period of no clear shock waves, the system stabilizes in a two-shock configuration. Subsequent pressure changes cause new periods of instability followed by stabilization in three-, two-, and four-shock configurations.
+
+![Example of an RDE simulation, with stepwise varying injection pressure. The upper plot shows the u variable in a shifted reference frame $\psi = x - g(u)$ that tries to follow the shock waves. The lower plot shows the injection pressure $u_p$ as a function of time.](figures/simulation-control.png){#fig-rde-sim}
+
+## Method
+
+In the current implementation, the Fourier Neural Operator is not directly integrated into the reinforcement learning loop. Instead, we adopt a data-driven approach where we generate simulation data and train the FNO to learn from these examples. This approach allows us to evaluate the FNO's capability to capture system dynamics without immediately incorporating it into the RL training process, although future work could explore such integration.
+
+### Data Generation
+
+For comprehensive training of the Fourier Neural Operator, we employ a diverse set of control policies to generate the data. These policies include deterministic approaches, random exploration policies, and previously trained reinforcement learning agents. This diversity ensures that the FNO is exposed to a wide range of system behaviors. We also vary the initial conditions of the simulations, incorporating different numbers of shock waves and combinations of different shock profiles to enhance the model's generalization capabilities across varying operating conditions of the RDE. 
+
+Specifically, we used 11 different control policies, 8 different initialization strategies, each combination run 10 times for up to 400 time steps of unit length, resulting in approximately 11 * 8 * 10 *400= 352000 data points.
+
+### Training
+
+The training process for the Fourier Neural Operator involves a systematic hyperparameter sweep to optimize performance. We explore variations in batch size to balance computational efficiency with learning stability, network size to determine appropriate model capacity, and the number of Fourier modes to capture relevant frequency information from the system dynamics.The dataset is split into a training set and a test set, with 80% of the data used for training and 20% used for testing.
+
+*report results*
+
+## Results and Analysis
+
+### Prediction Performance
+
+#### Prediciton on training data
+
+#### Prediction on "test" data
+
+### Performance Analysis
+
+-   faster than simulation? 
+### Discussion of Results
+
+## Conclusions and Future Work
+
+### Summary of Findings
+
+### Critical Assessment
+
+### Future Improvements
+
+-   use in RL loop
+-   more complex models
+-   more complex environments
+
+## References
+
+::: {#refs}
+:::
+
+## Appendix
+
+### Code Implementation
+
+-   In julia
+    -   fast, jit, multiple dispatch
+-   made a module RDEML.jl
+
+#### Dependencies
+
+-   Lux.jl
+-   NeuralOperators.jl
+-   MLUtils.jl
+-   RDE.jl
+-   DRL_RDE_utils.jl
+    -   RLBridge.jl
+    -   RDE_Env.jl
+    -   stable_baselines3
+    -   sbx: stable-baselines-jax -many more, see `Project.toml`
+
+### Additional Results
+
+### Technical Details

@@ -1,3 +1,6 @@
 .vscode/*
 .vscode/settings.json
 *.code-workspace
+*.pdf
+*.html
+*_files/
