@@ -15,7 +15,7 @@ bibliography: references.bib
 
 Active flow control has traditionally been handled by classical control algorithms with reasonable success. However, the complex, nonlinear nature of fluid flows presents opportunities for improvement that can be exploited by sophisticated neural networks. Reinforcement Learning (RL) is emerging as a promising approach in this field, offering potential advantages through its ability to learn optimal control policies, although it remains computationally demanding.
 
-Computational Fluid Dynamics (CFD) simulations are particularly expensive to run, and RL agents sometimes require numerous ($O(10^5)$ to $O(10^7)$) interactions to learn effective strategies. This highlights the critical importance of sample efficiency—extracting more knowledge from less data. Fourier Neural Operators (FNO) represent a novel class of operators capable of learning to approximate solution operators in partial differential equations. These operators are characterized by their rapid evaluation times, high accuracy, and ability to capture underlying system dynamics. As such, FNOs can be leveraged to accelerate RL training by learning the solution operator given a state and control input. This approach enables solving PDEs directly through the FNO rather than through time-consuming classical simulations, potentially offering significant speedups in the training processes.
+Computational Fluid Dynamics (CFD) simulations are particularly expensive to run, and RL agents often require numerous ($O(10^5)$ to $O(10^7)$) interactions to learn effective strategies. This highlights the critical importance of sample efficiency—extracting more knowledge from less data. Fourier Neural Operators (FNO) represent a novel class of operators capable of learning to approximate solution operators in partial differential equations. These operators are characterized by their rapid evaluation times, high accuracy, and ability to capture underlying system dynamics. As such, FNOs can be leveraged to accelerate RL training by learning the solution operator given a state and control input. This approach enables solving PDEs directly through the FNO rather than through time-consuming classical simulations, potentially offering significant speedups in the training processes.
 
 This project focuses on a small exploratory investigation of Fourier Neural Operators applied to the control of a one-dimensional wave propagation model. The model choice stems from work conducted prior to this course, providing continuity and established domain knowledge. We explore the possibility of using Fourier Neural Operators as a substitute for a traditional finite difference solver.
 
@@ -78,15 +78,109 @@ In the current implementation, the Fourier Neural Operator is not directly integ
 
 ### Data Generation
 
-For comprehensive training of the Fourier Neural Operator, we employ a diverse set of control policies to generate the data. These policies include deterministic approaches, random exploration policies, and previously trained reinforcement learning agents. This diversity ensures that the FNO is exposed to a wide range of system behaviors. We also vary the initial conditions of the simulations, incorporating different numbers of shock waves and combinations of different shock profiles to enhance the model's generalization capabilities across varying operating conditions of the RDE. 
+For comprehensive training of the Fourier Neural Operator, we employ a diverse set of control policies to generate the data. These policies include deterministic approaches, random exploration policies, and previously trained reinforcement learning agents. This diversity ensures that the FNO is exposed to a wide range of system behaviors. We also vary the initial conditions of the simulations, incorporating different numbers of shock waves and combinations of different shock profiles to enhance the model's generalization capabilities across varying operating conditions of the RDE.
 
-Specifically, we used 11 different control policies, 8 different initialization strategies, each combination run 10 times for up to 400 time steps of unit length, resulting in approximately 11 * 8 * 10 *400= 352000 data points.
+Specifically, we used 11 different control policies, 8 different initialization strategies, each combination run 10 times for up to 400 time steps of unit length, resulting in approximately 11 \* 8 \* 10 \*400= 352000 data points.
 
 ### Training
 
 The training process for the Fourier Neural Operator involves a systematic hyperparameter sweep to optimize performance. We explore variations in batch size to balance computational efficiency with learning stability, network size to determine appropriate model capacity, and the number of Fourier modes to capture relevant frequency information from the system dynamics.The dataset is split into a training set and a test set, with 80% of the data used for training and 20% used for testing.
 
-*report results*
+For these hyperparameter sweeps, the training consisted of 30 epochs, with a starting learning rate of 0.01 for 15 epochs, a learning rate of 0.001 for the next 10 epochs, and a learning rate of 0.0003 for the final 5 epochs.
+
+:::: {#fig-fno-modes-analysis}
+
+::: {.grid}
+::: {.g-col-8}
+::: {#fig-fno-modes}
+![](figures/modes_analysis.svg)
+
+Losses
+:::
+:::
+
+::: {.g-col-4}
+::: {#fig-fno-modes-time}
+![](figures/modes_training_time_analysis.svg)
+
+Training time
+:::
+:::
+:::
+
+Analysis of Fourier modes impact on FNO performance
+::::
+
+:::: {#fig-fno-depth-analysis}
+
+::: {.grid}
+::: {.g-col-8}
+::: {#fig-fno-depth}
+![](figures/depth_analysis.svg)
+
+Losses
+:::
+:::
+
+::: {.g-col-4}
+::: {#fig-fno-depth-time}
+![](figures/depth_training_time_analysis.svg)
+
+Training time
+:::
+:::
+:::
+
+Analysis of network depth impact on FNO performance
+::::
+
+:::: {#fig-fno-width-analysis}
+
+::: {.grid}
+::: {.g-col-8}
+::: {#fig-fno-width}
+![](figures/width_analysis.svg)
+
+Losses
+:::
+:::
+
+::: {.g-col-4}
+::: {#fig-fno-width-time}
+![](figures/width_training_time_analysis.svg)
+
+Training time
+:::
+:::
+:::
+
+Analysis of network width impact on FNO performance
+::::
+
+:::: {#fig-fno-batch-analysis}
+
+::: {.grid}
+::: {.g-col-8}
+::: {#fig-fno-batch}
+![](figures/batch_size_analysis.svg)
+
+Losses
+:::
+:::
+
+::: {.g-col-4}
+::: {#fig-fno-batch-time}
+![](figures/batch_size_training_time_analysis.svg)
+
+Training time
+:::
+:::
+:::
+
+Analysis of batch size impact on FNO performance
+::::
+
+Based on the results in [@fig-fno-modes-analysis; -@fig-fno-depth-analysis; -@fig-fno-width-analysis; and -@fig-fno-batch-analysis], we settled on a FNO configuration with 64 Fourier modes, a network depth, i.e. number of layers, of 4, a network width of 32, and a batch size of 256.
 
 ## Results and Analysis
 
@@ -98,8 +192,7 @@ The training process for the Fourier Neural Operator involves a systematic hyper
 
 ### Performance Analysis
 
--   faster than simulation? 
-### Discussion of Results
+-   faster than simulation? \### Discussion of Results
 
 ## Conclusions and Future Work
 
