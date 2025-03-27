@@ -207,7 +207,7 @@ function plot_training_time_analysis(df, param_name::String;
     
     param_list = sort(unique(df[!, Symbol(param_name)])) |> Vector{Int}
     
-    fig = Figure(size=(1000, 600))
+    fig = Figure(size=(500, 600))
     
     # First plot - Training time vs parameter value
     ax1 = Axis(fig[1, 1], 
