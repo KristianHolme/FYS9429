@@ -259,7 +259,8 @@ end
                     parallel=true,
                     rng=Random.default_rng(),
                     create_loader=true,
-                    test_split=0.2)
+                    test_split::Float64=0.0,
+                    test_batch_size::Int=2^12)
 
 Prepare a dataset for FNO training by loading data from simulation results.
 
@@ -291,7 +292,7 @@ train_loader, test_loader = prepare_dataset("my_simulations", batch_size=256, te
 ```
 """
 function prepare_dataset(dataset="datasets"; 
-                        batch_size::Int=2048, 
+                        batch_size::Int=256, 
                         shuffle::Bool=true,
                         parallel::Bool=true,
                         rng=Random.default_rng(),
@@ -300,16 +301,16 @@ function prepare_dataset(dataset="datasets";
                         test_batch_size::Int=2^12)
     df = collect_results(datadir(dataset))
     raw_datas = [sim_data_to_data_set(df.sim_data) for df in eachrow(df)]
-    x_datas = [@view raw_data[:,:,1:end-1] for raw_data in raw_datas]
-    y_datas = [@view raw_data[:,1:2,2:end] for raw_data in raw_datas]
-    combined_x_data = cat(x_datas..., dims=3)
-    combined_y_data = cat(y_datas..., dims=3)
     
     # If no test split is requested, return the entire dataset
     if test_split ≤ 0.0
+        x_datas = [@view raw_data[:,:,1:end-1] for raw_data in raw_datas]
+        y_datas = [@view raw_data[:,1:2,2:end] for raw_data in raw_datas]
+        combined_x_data = cat(x_datas..., dims=3)
+        combined_y_data = cat(y_datas..., dims=3)
+        
         dataset = FNODataset(combined_x_data, combined_y_data)
         
-        # Return either the raw dataset or a configured DataLoader
         if create_loader
             return create_dataloader(dataset; batch_size, shuffle, parallel, rng)
         else
@@ -317,26 +318,33 @@ function prepare_dataset(dataset="datasets";
         end
     end
     
-    # Otherwise, split the data into train and test sets
-    n_samples = size(combined_x_data, 3)
-    n_test = round(Int, test_split * n_samples)
-    n_train = n_samples - n_test
+    # Split trajectories into train and test sets
+    n_trajectories = length(raw_datas)
+    n_test = round(Int, test_split * n_trajectories)
+    n_train = n_trajectories - n_test
     
-    # Create shuffled indices for splitting
-    indices = shuffle ? randperm(rng, n_samples) : collect(1:n_samples)
+    # Create shuffled indices for splitting trajectories
+    indices = shuffle ? randperm(rng, n_trajectories) : collect(1:n_trajectories)
     train_indices = indices[1:n_train]
     test_indices = indices[n_train+1:end]
     
-    # Create train and test datasets
-    train_dataset = FNODataset(
-        combined_x_data[:,:,train_indices], 
-        combined_y_data[:,:,train_indices]
-    )
+    # Split and process train data
+    train_raw_datas = raw_datas[train_indices]
+    train_x_datas = [@view raw_data[:,:,1:end-1] for raw_data in train_raw_datas]
+    train_y_datas = [@view raw_data[:,1:2,2:end] for raw_data in train_raw_datas]
+    train_x_data = cat(train_x_datas..., dims=3)
+    train_y_data = cat(train_y_datas..., dims=3)
     
-    test_dataset = FNODataset(
-        combined_x_data[:,:,test_indices], 
-        combined_y_data[:,:,test_indices]
-    )
+    # Split and process test data
+    test_raw_datas = raw_datas[test_indices]
+    test_x_datas = [@view raw_data[:,:,1:end-1] for raw_data in test_raw_datas]
+    test_y_datas = [@view raw_data[:,1:2,2:end] for raw_data in test_raw_datas]
+    test_x_data = cat(test_x_datas..., dims=3)
+    test_y_data = cat(test_y_datas..., dims=3)
+    
+    # Create train and test datasets
+    train_dataset = FNODataset(train_x_data, train_y_data)
+    test_dataset = FNODataset(test_x_data, test_y_data)
     
     if create_loader
         train_loader = create_dataloader(train_dataset; batch_size, shuffle, parallel, rng)
