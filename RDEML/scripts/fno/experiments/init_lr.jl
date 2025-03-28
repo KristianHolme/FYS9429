@@ -1,8 +1,8 @@
 using DrWatson
 @quickactivate :RDEML
 ##
-experiment_name = "init_lr"
-batch_size = 265
+experiment_name = "init_lr_2"
+batch_size = 256
 modes = 64
 width = 32
 depth = 4

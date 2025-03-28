@@ -1,7 +1,7 @@
 using DrWatson
 @quickactivate :RDEML
 ##
-experiment_name = "width_comparison"
+experiment_name = "width_comparison_2"
 widths_list = [16, 32, 64, 128]
 lr_list = [0.01f0, 0.001f0, 3f-4]
 epochs_list = [15, 10, 5]

@@ -1,8 +1,8 @@
 using DrWatson
 @quickactivate :RDEML
 ##
-experiment_name = "secondary_lr"
-batch_size = 265
+experiment_name = "secondary_lr_2"
+batch_size = 256
 modes = 64
 width = 32
 depth = 4
@@ -26,7 +26,6 @@ for (i, lr) in enumerate(lrs)
     for run_id in 1:runs_per_config
         cfg = Dict("secondary_lr" => lr, "run" => run_id)
         produce_or_load(cfg, datadir("fno", experiment_name)) do cfg
-            # Reseed with a unique seed for this run
             Random.seed!(rng, experiment_seed + (i-1)*runs_per_config + run_id)
             
             chs = (3, fill(width, depth)..., 2)

@@ -1,14 +1,15 @@
 using DrWatson
 @quickactivate :RDEML
 ##
-experiment_name = "batch_size"
-batch_size_list = [128, 256, 512, 1024, 2048, 4096]
+experiment_name = "batch_size_2"
+batch_size_list = [64, 128, 256, 512, 1024, 2048, 4096]
 lr_list = [0.01f0, 0.001f0, 3f-4]
 epochs_list = [15, 10, 5]
 runs_per_config = 6
 ## rng and devices
 rng = Random.default_rng()
-Random.seed!(rng, 403)
+experiment_seed = 403
+Random.seed!(rng, experiment_seed)
 const cdev = cpu_device()
 const gdev = gpu_device()
 ## Load data with train/test split
@@ -23,6 +24,7 @@ for (i, batch_size) in enumerate(batch_size_list)
     for run_id in 1:runs_per_config
         cfg = Dict("batch_size" => batch_size, "run" => run_id)
         produce_or_load(cfg, datadir("fno", experiment_name)) do cfg
+            Random.seed!(rng, experiment_seed + (i-1)*runs_per_config + run_id)
             config = FNOConfig(;rng)
             
             # Use train_loader and test_loader
