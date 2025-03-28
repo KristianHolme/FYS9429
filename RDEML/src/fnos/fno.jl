@@ -67,6 +67,15 @@ function evaluate_test_loss(model, ps, st, test_dataloader, dev)
     return mean(test_losses)
 end
 
+function get_init_trainstate(;model, ps, st, lr=0.01)
+    return Training.TrainState(model, ps, st, OptimizationOptimisers.Adam(lr))
+end
+
+function get_init_trainstate(;config::FNOConfig, lr=0.01)
+    model = FNO(config)
+    return Training.TrainState(model, config.ps, config.st, OptimizationOptimisers.Adam(lr))
+end
+
 """
     train!(model, ps, st, data; lr=3f-4, epochs=10, losses=[], test_data=nothing, test_losses=[], dev=cpu_device(), AD=AutoZygote())
 
@@ -92,13 +101,18 @@ function train!(model, ps, st, data::DataLoader;
                 test_data=nothing, 
                 test_losses=[], 
                 dev=cpu_device(), 
-                AD=AutoZygote())
+                AD=AutoZygote(),
+                tstate=nothing)
     
-    tstate = Training.TrainState(model, ps, st, OptimizationOptimisers.Adam(lr))
+    if isnothing(tstate)
+        tstate = get_init_trainstate(;model, ps, st, lr)
+    else
+        Lux.Optimisers.adjust!(tstate, lr)
+    end
     
     # Configure progress bar
     has_test = !isnothing(test_data)
-    p = Progress(epochs*length(data))
+    p = Progress(epochs*length(data), showspeed=true)
     
     for epoch in 1:epochs
         # Training loop
@@ -119,7 +133,7 @@ function train!(model, ps, st, data::DataLoader;
         end
     end
     
-    return losses
+    return losses, tstate
 end
 
 """
@@ -132,24 +146,26 @@ function train!(config::FNOConfig, data::DataLoader,
                 epochs::Int;
                 test_data=nothing,
                 dev=cpu_device(),
-                AD=AutoZygote()
+                AD=AutoZygote(),
+                tstate=nothing
                )
     config.ps = config.ps |> dev
     config.st = config.st |> dev
     model = FNO(config)
     hist = config.history
     
-    train_time = @elapsed train!(
+    train_time = @elapsed _, tstate = train!(
         model, config.ps, config.st, data;
         losses=hist.losses, 
         test_data=test_data,
         test_losses=hist.test_losses,
-        lr, epochs, dev, AD)
+        lr, epochs, dev, AD,
+        tstate=tstate)
     push!(hist.learning_rates, lr)
     push!(hist.epochs, epochs)
     push!(hist.training_time, train_time)
     
-    return nothing
+    return tstate
 end
 
 """
@@ -165,12 +181,15 @@ function train!(config::FNOConfig, data::DataLoader,
                 AD=AutoZygote()
                )
     @assert length(lr) == length(epochs) "lr and epochs must have the same length"
+    config.ps = config.ps |> dev
+    config.st = config.st |> dev
+    tstate = get_init_trainstate(;config, lr=lr[1])
     
     for (lr_i, epochs_i) in zip(lr, epochs)
-        train!(config, data, lr_i, epochs_i; test_data=test_data, dev=dev, AD=AD)
+        train!(config, data, lr_i, epochs_i; test_data=test_data, dev=dev, AD=AD, tstate=tstate)
     end
     
-    return nothing
+    return tstate
 end
 
 

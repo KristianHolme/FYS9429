@@ -31,11 +31,11 @@ Reinforcement Learning (RL) is a framework for learning optimal control policies
 
 ### Fourier Neural Operators
 
-Fourier Neural Operators (FNO) represent a novel class of operators designed to learn approximations of solution operators in partial differential equations. Instead of modeling the solution function directly, i.e. approximating $u(x, t)$ by $u_\theta(x, t)$, as is the approach taken by Physics-Informed Neural Networks (PINNs), FNOs learn the solution operator, $\mathcal{G}: (u(x, t_i), \lambda(x, t_i), u_p(x, t_i)) \mapsto (u(x, t_{i+1}), \lambda(x, t_{i+1}))$, which is a function that maps a state and control input to a subsequent state. These operators offer significant advantages through their fast evaluation times, high accuracy, and ability to capture the underlying dynamics of complex systems.
+Fourier Neural Operators (FNO) represent a novel class of operators designed to learn approximations of solution operators in partial differential equations. Instead of modeling the solution function directly, i.e. approximating $u(x, t)$ by $u_\theta(x, t)$, as is the approach taken by Physics-Informed Neural Networks (PINNs), FNOs learn the solution operator, $\mathcal{G}: (u(x, t_i), \lambda(x, t_i), u_p(x, t_i)) \mapsto (u(x, t_{i+1}), \lambda(x, t_{i+1}))$, which is a function that maps a state and control input to a subsequent state. These operators offer significant advantages through their fast evaluation times, high accuracy, and ability to capture the underlying dynamics of complex systems. @fig-fno shows a schematic of the FNO.
 
 In the context of reinforcement learning, FNOs can be leveraged to accelerate training by learning the solution operator that maps state and control inputs to subsequent states. This approach creates a more efficient alternative to traditional simulation: instead of sending actions directly to the environment, control inputs are processed by the FNO, which predicts the resulting next state. This predicted state can then be used to calculate rewards and update the policy, potentially circumventing the need for expensive simulations during training.
 
-![Schematic of the Fourier Neural Operator. Adapted from [@li]](figures/fno.drawio.svg){#fig-fno}
+![Schematic of the Fourier Neural Operator. The input function, evaluated at equidistant points, is first lifted to a higher dimension by a neural network P. Then the data is passed through a number of fourier layers before being projected back down to the target dimension by a final neural network Q. In each fourier layer, the data $v$ is transformed using the Discrete Fourier Transform (DFT), and the the high frequencies is filtered out. The data, now in the frequency domain, undergoes a linear transformation, and is then transformed back from the frequency domain using the inverse DFT. The output from this fourier operations is then added to a linear transformation (W) of $v$ and passed through a nonlinear activation function. Herein, we use the generalized linear unit (GELU) as the activation function. Schematic adapted from [@li]](figures/fno.drawio.svg){#fig-fno}
 
 ### Rotating Detonation Engine
 
@@ -46,8 +46,8 @@ A Rotating Detonation Combustion (RDC) device is a device that uses a detonation
 In this study, the RDE is modeled as a one-dimensional system of dimensionless partial differential equations (PDEs), as described in [@koch2020; @koch2021]:
 
 \begin{align}
-    u_t + uu_x &= (1-\lambda)\omega(u)q_0 + \nu_1 u_{xx} + \epsilon \xi(u, u_0) \\
-    \lambda_t &= (1-\lambda)\omega(u) - \beta(u, u_p, s)\lambda + \nu_2\lambda_{xx}
+    u_t + uu_x &= (1-\lambda)\omega(u)q_0 + \nu_1 u_{xx} + \epsilon \xi(u, u_0), \\
+    \lambda_t &= (1-\lambda)\omega(u) - \beta(u, u_p, s)\lambda + \nu_2\lambda_{xx},
 \end{align}
 
 where
@@ -55,7 +55,7 @@ where
 \begin{align}
     \omega(u) &= e^{\frac{u-u_c}{\alpha}}, \\
     \xi(u, u_0) &= (u_0-u)u^n, \text{ and } \\
-    \beta(u, s) &= \frac{su_p}{1+e^{k(u-u_p)}}
+    \beta(u, s) &= \frac{su_p}{1+e^{k(u-u_p)}}.
 \end{align}
 
 This model as been shown accurately mimic the qualitative behavior of detonation waves in RDEs. It is highly general, and by tuning the parameters it can be made to mimic different RDE configurations[@koch2021a; @mendible2021].
@@ -80,7 +80,7 @@ In the current implementation, the Fourier Neural Operator is not directly integ
 
 For comprehensive training of the Fourier Neural Operator, we employ a diverse set of control policies to generate the data. These policies include deterministic approaches, random exploration policies, and previously trained reinforcement learning agents. This diversity ensures that the FNO is exposed to a wide range of system behaviors. We also vary the initial conditions of the simulations, incorporating different numbers of shock waves and combinations of different shock profiles to enhance the model's generalization capabilities across varying operating conditions of the RDE.
 
-Specifically, we used 11 different control policies, 8 different initialization strategies, each combination run 10 times for up to 400 time steps of unit length, resulting in approximately 11 \* 8 \* 10 \*400= 352000 data points.
+Specifically, we used 11 different control policies, 8 different initialization strategies, each combination run 10 times for up to 400 time steps of unit length, resulting in approximately 11 \* 8 \* 10 \* 400= 352000 data points.
 
 ### Training
 
@@ -180,9 +180,12 @@ Training time
 Analysis of batch size impact on FNO performance
 ::::
 
-Based on the results in [@fig-fno-modes-analysis; -@fig-fno-depth-analysis; -@fig-fno-width-analysis; and -@fig-fno-batch-analysis], we settled on a FNO configuration with 64 Fourier modes, a network depth, i.e. number of layers, of 4, a network width of 32, and a batch size of 256.
+Based on the results in [@fig-fno-modes-analysis; -@fig-fno-depth-analysis; -@fig-fno-width-analysis; and -@fig-fno-batch-analysis], we settled on a FNO configuration with 64 Fourier modes, a network depth, i.e. number of fourier layers, of 4, a network width of 32, and a batch size of 256. Similarly, experiments varying the initial learning rate suggested that an initial learning rate of 0.01 was optimal. 
 
 ## Results and Analysis
+Using the hyperparameters found in the previous section, we train a final set of FNOs, using different random seeds. We then evaluate the performance of the FNOs on two different simulation trajectories. The first trajectory is generated using a similar, but slightly different control policy and initialization strategy as is found in the training data. The second trajectory is generated using a different control policy and initialization strategy.
+
+The evaluation speed of the FNOs is the main motivation for investigating FNOs for RL. For the simple RDE model considered here, a single forward step using the custom finite difference solver is on the order of X microseconds, while a single forward step using the FNOs is on the order of Y microseconds. For larger models, however the expected speed advantage is much more significant, as in e.g. CITE
 
 ### Prediction Performance
 

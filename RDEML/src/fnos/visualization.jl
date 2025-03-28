@@ -130,7 +130,7 @@ function plot_parameter_analysis(df, param_name::String;
     save_plots=false,
     experiment_name="parameter_analysis")
     
-    param_list = sort(unique(df[!, Symbol(param_name)])) |> Vector{Int}
+    param_list = skipmissing(sort(unique(df[!, Symbol(param_name)]))) |> collect
     
     fig = Figure(size=(1000, 600))
     
@@ -166,11 +166,11 @@ function plot_parameter_analysis(df, param_name::String;
         xticks = (1:length(param_list), string.(param_list)))
     
     # Collect final losses and parameter values
-    final_train_losses = collect(df.final_train_loss) |> Vector{Float32}
-    final_test_losses = collect(df.final_test_loss) |> Vector{Float32}
-    param_values = collect(df[!, Symbol(param_name)]) |> Vector{Int}
+    final_train_losses = df.final_train_loss |> skipmissing |> collect
+    final_test_losses = df.final_test_loss |> skipmissing |> collect
+    param_values = df[!, Symbol(param_name)] |> skipmissing |> collect
     group = [indexin(value, param_list)[1] for value in param_values]
-    run_id = collect(df.run) |> Vector{Int}
+    run_id = df.run |> skipmissing |> collect
     
     wcolors = Makie.wong_colors()[1:length(param_list)]
     colors = wcolors[group]
@@ -205,7 +205,7 @@ function plot_training_time_analysis(df, param_name::String;
     save_plots=false,
     experiment_name="parameter_analysis")
     
-    param_list = sort(unique(df[!, Symbol(param_name)])) |> Vector{Int}
+    param_list = sort(unique(df[!, Symbol(param_name)])) |> skipmissing |> collect
     
     fig = Figure(size=(500, 600))
     
@@ -216,8 +216,8 @@ function plot_training_time_analysis(df, param_name::String;
         xticks = (1:length(param_list), string.(param_list)))
     
     # Collect training times and parameter values
-    param_values = collect(df[!, Symbol(param_name)]) |> Vector{Int}
-    run_id = collect(df.run) |> Vector{Int}
+    param_values = df[!, Symbol(param_name)] |> skipmissing |> collect
+    run_id = df.run |> skipmissing |> collect
     
     # Get training times for each learning rate and epoch combination
     training_times = Float32[]
