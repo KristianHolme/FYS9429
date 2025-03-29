@@ -1,5 +1,6 @@
 using DrWatson
 @quickactivate :RDEML
+using CairoMakie
 ## Test using old
 experiment_name = "final_runs_2"
 df = collect_results(datadir("fno", experiment_name))

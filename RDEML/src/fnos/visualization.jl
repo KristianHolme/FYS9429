@@ -312,6 +312,7 @@ function plot_losses_final_eval(df;
         color=colors[i])
     end
     ax1_lines = [LineElement(color=:black, linestyle=:solid), LineElement(color=:black, linestyle=:dash)]
+    ylims!(ax1, (nothing, 10^(-2.5)))
     axislegend(ax1, ax1_lines, ["Train Loss", "Test Loss"], position=:rt; fontsize)
 
     if save_plot
