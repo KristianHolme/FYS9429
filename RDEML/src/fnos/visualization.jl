@@ -19,8 +19,6 @@ function plot_losses(fno_config::FNOConfig;
                      saveplot=false, 
                      folder="", 
                      title="Losses",
-                     x_axis_mode=:steps,
-                     include_test_losses=true,
                      window_size=50,
                      plot_confidence_bands=true,
                      train_color=:blue,
@@ -34,12 +32,10 @@ function plot_losses(fno_config::FNOConfig;
     test_losses = history.test_losses
     
     fig = Figure()
-    Label(fig[1, 1], title, tellwidth=false, tellheight=true, fontsize=18)
-    Label(fig[end+1, 1], subtitle, tellwidth=false, tellheight=true, fontsize=12)
-    
-    # Determine x-axis label based on mode
-    x_label = "Epoch"
-    ax = Makie.Axis(fig[end+1, 1], xlabel=x_label, ylabel="Loss", yscale=log10)
+    xlabel = "Epoch"
+    titlesize = 18
+    subtitlesize = 12
+    ax = Makie.Axis(fig[1, 1]; xlabel, ylabel="Loss", yscale=log10, title, subtitle, titlesize, subtitlesize)
     
     # Calculate x values based on mode
     @info "epochs: $(sum(epochs)), length(losses): $(length(losses))"
@@ -126,16 +122,19 @@ function plot_parameter_analysis(df, param_name::String;
     title="Parameter Analysis",
     xlabel="Parameter Value",
     ylabel="Final Test Loss",
-    window_fraction=0.1,
+    window_fraction=0.003,
     save_plots=false,
-    experiment_name="parameter_analysis")
+    experiment_name="parameter_analysis",
+    fontsize=18,
+    extra_save_dir="")
     
     param_list = skipmissing(sort(unique(df[!, Symbol(param_name)]))) |> collect
     
-    fig = Figure(size=(1000, 600))
+    fig = Figure(size=(750, 450))
     
     # First plot - Loss history
-    ax1 = Axis(fig[1, 1], xlabel="Epoch", ylabel="Loss (moving average)", yscale=log10)
+    ax1 = Axis(fig[1, 1], xlabel="Epoch", ylabel="Loss (moving average)",
+        yscale=log10; xlabelsize=fontsize, ylabelsize=fontsize)
     for (i, row) in enumerate(eachrow(df))
         config = row.full_config
         losses = config.history.losses
@@ -156,14 +155,15 @@ function plot_parameter_analysis(df, param_name::String;
         lines!(ax1, 1:total_epochs, test_losses, color=color, linestyle=:dash)
     end
     ax1_lines = [LineElement(color=:black, linestyle=:solid), LineElement(color=:black, linestyle=:dash)]
-    axislegend(ax1, ax1_lines, ["Train Loss", "Test Loss"], position=:rt)
+    axislegend(ax1, ax1_lines, ["Train Loss", "Test Loss"], position=:rt; fontsize)
     
     # Second plot - Individual end loss barplot
-    ax2 = Axis(fig[1, 2], 
-        xlabel=xlabel, 
-        ylabel=ylabel, 
+    ax2 = Axis(fig[1, 2]; 
+        xlabel, 
+        ylabel, 
         yscale=log10,
-        xticks = (1:length(param_list), string.(param_list)))
+        xticks = (1:length(param_list), string.(param_list)),
+        xlabelsize=fontsize, ylabelsize=fontsize)
     
     # Collect final losses and parameter values
     final_train_losses = df.final_train_loss |> skipmissing |> collect
@@ -184,7 +184,7 @@ function plot_parameter_analysis(df, param_name::String;
         errorbars!(ax2, [i], [mean_loss], [0.38f0], color=:black, linewidth=2, direction=:x)
     end
     mean_element = LineElement(color=:black, linewidth=2)
-    axislegend(ax2, [mean_element], ["Mean Loss"], position=:lt)
+    axislegend(ax2, [mean_element], ["Mean Loss"], position=:ct; fontsize)
     
     if save_plots
         dir = plotsdir("fno", experiment_name)
@@ -193,6 +193,10 @@ function plot_parameter_analysis(df, param_name::String;
         end
         save(joinpath(dir, "$(param_name)_analysis.svg"), fig)
         save(joinpath(dir, "$(param_name)_analysis.png"), fig)
+        if !isempty(extra_save_dir)
+            save(joinpath(extra_save_dir, "$(param_name)_analysis.svg"), fig)
+            save(joinpath(extra_save_dir, "$(param_name)_analysis.png"), fig)
+        end
     end
     
     return fig
@@ -203,17 +207,22 @@ function plot_training_time_analysis(df, param_name::String;
     xlabel="Parameter Value",
     ylabel="Training Time (seconds)",
     save_plots=false,
-    experiment_name="parameter_analysis")
+    experiment_name="parameter_analysis",
+    extra_save_dir="",
+    fontsize=18)
     
     param_list = sort(unique(df[!, Symbol(param_name)])) |> skipmissing |> collect
     
-    fig = Figure(size=(500, 600))
+    fig = Figure(size=(375, 450))
     
     # First plot - Training time vs parameter value
-    ax1 = Axis(fig[1, 1], 
-        xlabel=xlabel, 
-        ylabel=ylabel,
-        xticks = (1:length(param_list), string.(param_list)))
+    ax1 = Axis(fig[1, 1]; 
+        xlabel, 
+        ylabel,
+        xticks = (1:length(param_list), string.(param_list)),
+        xlabelsize=fontsize,
+        ylabelsize=fontsize,
+        )
     
     # Collect training times and parameter values
     param_values = df[!, Symbol(param_name)] |> skipmissing |> collect
@@ -246,15 +255,15 @@ function plot_training_time_analysis(df, param_name::String;
         dodge=runs,
         color=colors)
     
-    # Calculate mean total training time for each parameter group
-    total_times = [sum(times) for times in training_times]
+    
     for (i, param_value) in enumerate(param_list)
-        group_times = total_times[group .== i]
-        mean_time = mean(group_times)
+        group_times = training_times[group .== i]
+        group_runs = length(unique(runs[group .== i]))
+        mean_time = sum(group_times) / group_runs
         errorbars!(ax1, [i], [mean_time], [0.38f0], color=:black, linewidth=2, direction=:x)
     end
     mean_element = LineElement(color=:black, linewidth=2)
-    axislegend(ax1, [mean_element], ["Mean Total Time"], position=:lt)
+    axislegend(ax1, [mean_element], ["Mean Total Time"], position=:ct; fontsize)
     
     
     if save_plots
@@ -262,9 +271,56 @@ function plot_training_time_analysis(df, param_name::String;
         if !isdir(dir)
             mkdir(dir)
         end
-        save(joinpath(dir, "$(param_name)_training_time_analysis.svg"), fig)
-        save(joinpath(dir, "$(param_name)_training_time_analysis.png"), fig)
+        basename = "$(param_name)_training_time_analysis"
+        save(joinpath(dir, "$basename.svg"), fig)
+        save(joinpath(dir, "$basename.png"), fig)
+        if !isempty(extra_save_dir)
+            save(joinpath(extra_save_dir, "$basename.svg"), fig)
+            save(joinpath(extra_save_dir, "$basename.png"), fig)
+        end
     end
     
+    return fig
+end
+
+function plot_losses_final_eval(df;
+    folder="final_runs_2",
+    window_fraction=0.003,
+    save_plot=false,
+    fontsize=18,
+    extra_save_dir="")
+    fig = Figure(size=(600, 400))
+    
+    # First plot - Loss history
+    ax1 = Axis(fig[1, 1], xlabel="Epoch", ylabel="Loss (moving average)",
+        yscale=log10; xlabelsize=fontsize, ylabelsize=fontsize)
+    
+    colors = Makie.Colors.distinguishable_colors(size(df, 1))
+    for (i, row) in enumerate(eachrow(df))
+        config = row.full_config
+        losses = config.history.losses
+        total_epochs = sum(config.history.epochs)
+        training_progress = collect(1:length(losses)) ./ length(losses)
+        epochs = training_progress .* total_epochs
+        
+        # Plot line
+        line = lines!(ax1, epochs, moving_average(losses, Int(floor(length(losses) * window_fraction))),
+        color=colors[i])
+        # plot test loss
+        test_losses = config.history.test_losses
+        lines!(ax1, 1:total_epochs, test_losses, linestyle=:dash,
+        color=colors[i])
+    end
+    ax1_lines = [LineElement(color=:black, linestyle=:solid), LineElement(color=:black, linestyle=:dash)]
+    axislegend(ax1, ax1_lines, ["Train Loss", "Test Loss"], position=:rt; fontsize)
+
+    if save_plot
+        path = plotsdir("fno", folder, savename(fno_config, "svg"))
+        if !isdir(plotsdir("fno", folder))
+            mkdir(plotsdir("fno", folder))
+        end
+        save(path, fig)
+    end
+
     return fig
 end

@@ -1,11 +1,11 @@
 using DrWatson
 @quickactivate :RDEML
 ##
-experiment_name = "final_runs"
+experiment_name = "final_runs_2"
 depth = 4
 width = 32
-modes = 64
-batch_size = 256
+modes = 16
+batch_size = 512
 lrs = [0.01f0, 0.001f0, 3f-4]
 epochs = [5, 10, 10]
 runs = 24

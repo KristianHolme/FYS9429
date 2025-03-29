@@ -1,10 +1,17 @@
 using DrWatson
 @quickactivate :RDEML
 ## Test using old
-
-
-
-
+experiment_name = "final_runs_2"
+df = collect_results(datadir("fno", experiment_name))
+const cdev = cpu_device()
+const gdev = CUDADevice(device!(0))
+##
+fig = Figure()
+ax = Axis(fig[1,1], yscale=log10)
+barplot!(ax, df.run, df.final_test_loss)
+fig
+##
+plot_losses_final_eval(df; save_plot=false, folder=experiment_name)
 
 
 ## Test the FNO with a (probably) new initial condition

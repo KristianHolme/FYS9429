@@ -116,11 +116,9 @@ function train!(model, ps, st, data::DataLoader;
     
     for epoch in 1:epochs
         # Training loop
-        epoch_losses = Float32[]
         for (x, y) in dev(data)
             _, loss, _, tstate = Training.single_train_step!(AD, MSELoss(), (x, y), tstate)
             push!(losses, loss)
-            push!(epoch_losses, loss)
             
             # Update progress bar
             next!(p, showvalues=[("Train Loss", loss), ("Epoch", epoch), "Test Loss" => isempty(test_losses) ? NaN : test_losses[end]])

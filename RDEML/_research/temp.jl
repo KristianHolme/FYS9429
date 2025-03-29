@@ -12,58 +12,76 @@ number_of_params([64, 64])
 number_of_params([16, 16, 16, 16, 16].*2)
 number_of_params([64, 64, 64, 64])
 number_of_params(ones(Int64, 16)*16)
+##
+include("scripts/fno/experiments/mode_comparison.jl")
+include("scripts/fno/experiments/batch_size.jl")
+include("scripts/fno/experiments/width.jl")
 
-##
-function supersin(x)
-    modes = 2:9
-    shifts = rand(1..2*pi, length(modes))
-    M = stack([sin.(i .* x .+ shifts[ix])./(3*i) for (ix, i) in enumerate(modes)])
-    return 1.0 .+ max.(0, sum(M, dims=2))
-end
-x = LinRange(0, 2π, 512) |> collect
-y = supersin(x)
-lines(x, vec(y))
-##
-fc = FNOConfig(modes=32)
-savename(fc)
-RDEML.fnoconfig_to_dict(fc)
-safesave(datadir("test", savename(fc)*".jld2"), fc)
-res = collect_results(datadir("test"))
-fc = res[1, :full_config]
-res[1, "chs"]
+include("scripts/fno/experiments/depth.jl")
+
+include("scripts/fno/experiments/init_lr.jl")
+
+include("scripts/fno/experiments/secondary_lr.jl")
+
 ##
 using DrWatson
 @quickactivate :RDEML
-env = RDEEnv(RDEParam(tmax = 40.0f0),
-    dt = 1.0f0,
-    observation_strategy=SectionedStateObservation(minisections=32, target_shock_count=1),
-    reset_strategy=ShiftReset(RandomShockOrCombination())
+const gdev = CUDADevice(device!(dev_id-1))
+
+## Test regular MLP to learn a simple function
+using Lux, Random, LuxCUDA, MLUtils, OptimizationOptimisers
+using Statistics
+using ProgressMeter
+
+const gdev = CUDADevice(device!(0))
+
+# Create the target function
+f(x) = sin(3x) + sin(5x)/3
+
+
+
+# Generate training data
+rng = Random.default_rng()
+Random.seed!(rng, 123)
+n_train = 100_000
+x_train = range(-2π, 2π, length=n_train) |> collect
+y_train = f.(x_train)
+x_train = reshape(x_train, 1, :)  # Reshape for Lux input
+y_train = reshape(y_train, 1, :)
+
+# Create the model (using [128, 128, 128] which gives ~100k parameters)
+
+width=256
+model = Chain(
+    Dense(1, width, tanh),
+    Dense(width, width, tanh),
+    Dense(width, width, tanh),
+    Dense(width, 1)
 )
-policy = ConstantRDEPolicy(env)
-target = 1
-policy = load_best_policy("transition_rl_9", project_path=joinpath(homedir(), "Code", "DRL_RDE"),
-    filter_fn=df -> df.target_shock_count == target, name="t9-target-$(target)-best")[1]
-sim_data = run_policy(policy, env)
-dataset_info = DataSetInfo(sim_data, policy, env.prob.reset_strategy, 1, length(sim_data.states))
-savename(dataset_info)
-safesave(datadir("test", savename(dataset_info)*".jld2"), dataset_info)
-collect_results(datadir("test"))
 
-data = prepare_dataset("test", batches=3)
-df = collect_results(datadir("test"))
-size(df)
-eachrow(df)
-rows(df)
+# Initialize parameters and states
+ps, st = Lux.setup(rng, model)
+ps = ps |> gdev
+st = st |> gdev
 
-##
-env = RDEEnv(RDEParam(tmax = 400.0f0),
-    dt = 1.0f0,
-    observation_strategy=SectionedStateObservation(minisections=32, target_shock_count=1),
-    reset_strategy=ShiftReset(SineCombination())
-)
 
-policy = ScaledPolicy(RandomRDEPolicy(env), 0.05f0)
-##
-sim_data = run_policy(policy, env)
-plot_shifted_history(sim_data, env.prob.x)
+# Training parameters
+n_epochs = 10
+batch_size = 512
+learning_rate = 3f-4
+AD = AutoZygote()
+losses = Float32[]
+
+dataloader = DataLoader((x_train, y_train), batchsize=batch_size, shuffle=true)
+tstate = Training.TrainState(model, ps, st, OptimizationOptimisers.Adam(learning_rate))
+# Training loop
+p = Progress(n_epochs*length(dataloader), showspeed=true)
+
+for epoch in 1:n_epochs
+    for (x, y) in gdev(dataloader)
+        _, loss, _, tstate = Training.single_train_step!(AD, MSELoss(), (x, y), tstate)
+        push!(losses, loss)
+        next!(p, showvalues=[("Loss", loss)])
+    end    
+end
 ##

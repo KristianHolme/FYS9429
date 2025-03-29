@@ -11,7 +11,7 @@ rng = Random.default_rng()
 experiment_seed = 963
 Random.seed!(rng, experiment_seed)
 const cdev = cpu_device()
-const gdev = gpu_device()
+const gdev = gpu_device(dev_id)
 ## Load data
 train_loader, test_loader = prepare_dataset(;rng, batch_size=512, test_split=0.2)
 

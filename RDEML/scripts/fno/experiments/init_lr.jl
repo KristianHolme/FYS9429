@@ -14,7 +14,7 @@ experiment_seed = 477
 rng = Random.default_rng()
 Random.seed!(rng, experiment_seed)
 const cdev = cpu_device()
-const gdev = gpu_device()
+const gdev = gpu_device(dev_id)
 ## Load data with train/test split
 train_dataset, test_dataset = prepare_dataset(create_loader=false, test_split=0.2, rng=rng)
 

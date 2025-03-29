@@ -67,7 +67,7 @@ module RDEML
 
     include("fnos/visualization.jl")
     export plot_losses, visualize_data, plot_test_comparison, 
-        plot_parameter_analysis, plot_training_time_analysis
+        plot_parameter_analysis, plot_training_time_analysis, plot_losses_final_eval
 
     include("fnos/analysis.jl")
     export compare_to_policy

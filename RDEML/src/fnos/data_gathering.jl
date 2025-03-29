@@ -299,7 +299,7 @@ function prepare_dataset(dataset="datasets";
                         create_loader::Bool=true,
                         test_split::Float64=0.0,
                         test_batch_size::Int=2^12)
-    df = collect_results(datadir(dataset))
+    df = collect_results!(datadir(dataset))
     raw_datas = [sim_data_to_data_set(df.sim_data) for df in eachrow(df)]
     
     # If no test split is requested, return the entire dataset
