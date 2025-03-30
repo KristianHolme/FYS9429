@@ -83,36 +83,50 @@ function plot_losses(fno_config::FNOConfig;
     return fig
 end
 
-function plot_test_comparison(;n_t, x, test_data, predicted_states, timesteps=[1, 2, n_t÷2], title="")
-    fig = Figure(size=(1000, 200*length(timesteps)))
+function plot_test_comparison(;n_t, x, test_data, predicted_states, timesteps=[1, 2, n_t÷2], title="", plot_input=true)
+    fig = Figure(size=(600, 180*max(3, length(timesteps))))
     Label(fig[0, 1:2], title, tellwidth=false, fontsize=24)
     
     # Create legend elements for line styles
+    # jl_colors = Colors.JULIA_LOGO_COLORS
+    colors = [:darkorange1, :blue, :green]
     style_elements = [
-        LineElement(color=:black, linestyle=:dash, label="Simulation"),
-        LineElement(color=:black, linestyle=:solid, label="FNO")
+        LineElement(color=colors[1], linestyle=:dash, label="Simulation"),
+        LineElement(color=colors[2], linestyle=:solid, label="FNO"),
     ]
-    
-    
-    colors = Makie.wong_colors()[1:2]
-    
-    # Plot the data
-    for (i, timestep) in enumerate(filter(x->x+1<=n_t, timesteps))
-        Label(fig[i*2, :], "t=$(timestep)", fontsize=16, font=:bold)
-        ax_u = Makie.Axis(fig[i*2+1, 1], xlabel="x", ylabel="u", ylabelrotation=0)
-        ax_λ = Makie.Axis(fig[i*2+1, 2], xlabel="x", ylabel="λ", ylabelrotation=0)
-        lines!(ax_u, x, test_data[:, 1, timestep+1], color=colors[1], linestyle=:dash) #+1 because index 1 is time 0
-        lines!(ax_u, x, predicted_states[:, 1, timestep+1], color=colors[1])
-        lines!(ax_λ, x, test_data[:, 2, timestep+1], color=colors[2], linestyle=:dash)
-        lines!(ax_λ, x, predicted_states[:, 2, timestep+1], color=colors[2])
+    style_labels = ["Simulation", "FNO"]
+    if plot_input
+        push!(style_elements, LineElement(color=colors[3], linestyle=:dash, label="Input"))
+        push!(style_labels, "Input")
     end
+    
     # legend for line styles
     Legend(fig[1,1:2], 
         style_elements,
-        ["Simulation", "FNO"],
+        style_labels,
         orientation=:horizontal,
         tellwidth=false
     )
+    
+    # Plot the data
+    for (i, timestep) in enumerate(filter(x->x+1<=n_t, timesteps))
+        row = i + 1
+        Label(fig[row, 0], "t=$(timestep)", fontsize=16, font=:bold, tellwidth=false, tellheight=false)
+        ax_u = Makie.Axis(fig[row, 1], xlabel="x", ylabel="u", ylabelrotation=0)
+        ax_λ = Makie.Axis(fig[row, 2], xlabel="x", ylabel="λ", ylabelrotation=0)
+        #plot input data
+        if plot_input
+            lines!(ax_u, x, test_data[:, 1, timestep], color=colors[3], linestyle=:dash)
+            lines!(ax_λ, x, test_data[:, 2, timestep], color=colors[3], linestyle=:dash)
+        end
+        # plot predicted data
+        lines!(ax_u, x, predicted_states[:, 1, timestep+1], color=colors[2])
+        lines!(ax_λ, x, predicted_states[:, 2, timestep+1], color=colors[2])
+        #plot simulation data
+        lines!(ax_u, x, test_data[:, 1, timestep+1], color=colors[1], linestyle=:dash) #+1 because index 1 is time 0
+        lines!(ax_λ, x, test_data[:, 2, timestep+1], color=colors[1], linestyle=:dash)
+    end
+    colsize!(fig.layout, 0, Relative(1/10))
     
     
     return fig
@@ -316,11 +330,16 @@ function plot_losses_final_eval(df;
     axislegend(ax1, ax1_lines, ["Train Loss", "Test Loss"], position=:rt; fontsize)
 
     if save_plot
-        path = plotsdir("fno", folder, savename(fno_config, "svg"))
-        if !isdir(plotsdir("fno", folder))
-            mkdir(plotsdir("fno", folder))
+        dir = plotsdir("fno", folder)
+        bname = "final_losses"
+        isdir(dir) || mkdir(dir)
+        save(joinpath(dir, "$bname.svg"), fig)
+        save(joinpath(dir, "$bname.png"), fig)
+        if !isempty(extra_save_dir)
+            isdir(extra_save_dir) || mkdir(extra_save_dir)
+            save(joinpath(extra_save_dir, "$bname.svg"), fig)
+            save(joinpath(extra_save_dir, "$bname.png"), fig)
         end
-        save(path, fig)
     end
 
     return fig

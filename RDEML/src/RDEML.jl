@@ -2,6 +2,7 @@ __precompile__(false)
 module RDEML
     using Reexport
     using CairoMakie
+    using Colors
     using Dates
     using DrWatson
     @reexport using DRL_RDE_utils
@@ -70,7 +71,7 @@ module RDEML
         plot_parameter_analysis, plot_training_time_analysis, plot_losses_final_eval
 
     include("fnos/analysis.jl")
-    export compare_to_policy
+    export compare_to_policy, replace_sim_with_prediction, plot_initial_conditions
 
     include("fnos/model_io.jl")
     export fnoconfig_to_dict, dict_to_fnoconfig
