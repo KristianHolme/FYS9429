@@ -70,7 +70,7 @@ The model tracks two primary variables. $u$ represents flow properties, can be t
 
 The detonation wave manifests as a shock wave traveling circumferentially around the engine's cylindrical chamber. Control of the engine is achieved by modulating the injection pressure, which influences the wave dynamics. Performance evaluation of an RL agent is herein based on a weighted combination of different metrics, including wave span, periodicity, shock spacing, and the number of shock waves present. Notably, reinforcement learning agents can be trained to achieve specific objectives related to the number of shocks in the system. @fig-rde-sim shows a simulation of the RDE with step-wise changes in injection pressure. We observe that changing the pressure forces a change in the number of shock waves present, and the amplitude of the shock waves. The simulation starts with an initial "bump" configuration ($u(x) = \frac{3}{2} \text{sech}^{20}(x - 1)$) that is destabilized after the first pressure change. After a period of no clear shock waves, the system stabilizes in a two-shock configuration. Subsequent pressure changes cause new periods of instability followed by stabilization in three-, two-, and four-shock configurations.
 
-![Example of an RDE simulation, with stepwise varying injection pressure. The upper plot shows the u variable in a shifted reference frame $\psi = x - g(u)$ that tries to follow the shock waves. The lower plot shows the injection pressure $u_p$ as a function of time.](figures/simulation-control.png){#fig-rde-sim}
+![Example of an RDE simulation, with stepwise varying injection pressure. The upper plot shows the u variable in a moving reference frame $\psi = x - g(u)$ that tries to follow the shock waves. The lower plot shows the injection pressure $u_p$ as a function of time.](figures/simulation-control.png){#fig-rde-sim}
 
 ## Method
 
@@ -86,7 +86,7 @@ Specifically, we used 11 different control policies, 8 different initialization 
 
 The training process for the Fourier Neural Operator involves a systematic hyperparameter sweep to optimize performance. We explore variations in batch size to balance computational efficiency with learning stability, network size to determine appropriate model capacity, and the number of Fourier modes to capture relevant frequency information from the system dynamics.The dataset is split into a training set and a test set, with 80% of the data used for training and 20% used for testing.
 
-For these hyperparameter sweeps, the training consisted of 30 epochs, with a starting learning rate of 0.01 for 15 epochs, a learning rate of 0.001 for the next 10 epochs, and a learning rate of 0.0003 for the final 5 epochs.
+Early experiments performing hyperparameter sweeps over the learning rate showed that an initial learning rate of 0.01 was suitable. For the following sweeps, the training consisted of 30 epochs, with a starting learning rate of 0.01 for 15 epochs, a learning rate of 0.001 for the next 10 epochs, and a learning rate of 0.0003 for the final 5 epochs.
 
 :::::::: {#fig-fno-modes-analysis}
 ::::::: grid
@@ -176,42 +176,124 @@ Training time
 Analysis of batch size impact on FNO performance
 ::::::::
 
-Based on the results in [@fig-fno-modes-analysis; -@fig-fno-depth-analysis; -@fig-fno-width-analysis; and -@fig-fno-batch-analysis], we settled on a FNO configuration with 16 Fourier modes, a network depth, i.e. number of fourier layers, of 4, a network width of 32, and a batch size of 512. Similarly, experiments varying the initial learning rate suggested that an initial learning rate of 0.01 was optimal.
+Based on the results in [@fig-fno-modes-analysis; -@fig-fno-depth-analysis; -@fig-fno-width-analysis; and -@fig-fno-batch-analysis], we settled on a FNO configuration with 16 Fourier modes, a network depth, i.e. number of fourier layers, of 4, a network width of 32, and a batch size of 512.
 
 ## Results and Analysis
 
-Using the hyperparameters found in the previous section, we train a final set of FNOs, using different random seeds. We then evaluate the performance of the FNOs on two different simulation trajectories. The first trajectory is generated using a similar, but slightly different control policy and initialization strategy as is found in the training data. The second trajectory is generated using a different control policy and initialization strategy.
-
-The evaluation speed of the FNOs is the main motivation for investigating FNOs for RL. For the simple RDE model considered here, a single forward step using the custom finite difference solver is on the order of 4 milliseconds, while a single forward step using the FNOs is on the order of 700 microseconds (on GPU). So even for a small and fast simulation as in our case, the FNO still is almost six times faster. For larger models, the expected speed advantage is much more significant, as in e.g. CITE
+Using the hyperparameters found in the previous section, we train a final set of FNOs, using different random seeds. We then evaluate the performance of the FNOs on two different simulation trajectories. The first trajectory is generated using a similar, but slightly different control policy and initialization strategy as is found in the training data. The second trajectory is generated using a different control policy and initialization strategy. We showcase two different prediction methods. The first, herein called one-step-ahead prediction, is the most straightforward method, where the FNO is used to predict the next state in the simulation, given the previous simulation state. The second method, herein called recursive prediction, is more relevant in an RL context, where the purpose of the FNO is the replace the finite difference simulator. In recursive prediction, the FNO is first given the initial conditions of the PDE system, and then recursively used to predict the next state in the simulation, given the previous predicted states, along with the injection pressure dictated by the control policy.
 
 ### Prediction Performance
 
-#### Prediciton on training data
+The evaluation speed of the FNOs is the main motivation for investigating FNOs for RL. For the simple RDE model considered here, a single forward step using the custom finite difference solver is on the order of 4 milliseconds, while a single forward step using the FNOs is on the order of 700 microseconds (on GPU). See @sec-appendix for details. So even for a small and fast simulation as in our case, the FNO still is almost six times faster. For larger models, the expected speed advantage is much more significant, as in e.g. [@kurth2023]
 
-#### Prediction on "test" data
+#### Prediciton on known data
 
-### Performance Analysis
+We start by using the best FNO from the final set of FNOS, as judged by final test loss, in a comparison with the finite difference solver. We construct an initial condition that is a weighted combination of different shock profiles. The initial condition of the main variables is shown in @fig-final-init-known. The initial injection pressure is set to $u_p \approx 0.71$.
 
--   faster than simulation? \### Discussion of Results
+![Initial condition for the weighed combination of shock profiles. The upper plot shows the u variable, and the lower plot shows the $\lambda$ variable.](figures/final_eval/initial_condition_known.svg){#fig-final-init-known}
+
+We use a stepwise constant control policy, with predetermined steps. The simulation is run for 410 time steps of length 1, and the evolution of the system is shown in @fig-final-sim-known.
+
+![Simulation of the RDE using the finite difference solver. The upper plot shows the u variable in a moving reference frame $\psi = x - g(u)$, and the lower plot shows the injection pressure $u_p$.](figures/final_eval/simulation_known.png){#fig-final-sim-known}
+
+We now use the FNO to do one-step-ahead prediction. The predictions are shown in @fig-final-one-step-pred-known. We see that the predictions from the FNO are colesly aligned with the simulation from the finite difference solver.
+
+![One-step-ahead predictions of the RDE using the FNO.](figures/final_eval/one_step_known.svg){#fig-final-one-step-pred-known}
+
+When doing recursive prediction, the outcomes are subject to the accumulation of errors. @fig-final-recursive-pred-known shows the recursive predictions of the RDE using the FNO at selected time steps. We see that the predictions are less accurate than the one-step-ahead predictions, and that the errors accumulate over time. However, the predictions are not completely diverging, but seem to follow the general trend of the simulation, as is shown in @fig-final-recursive-pred-known-whole.
+
+![Recursive predictions of the RDE using the FNO.](figures/final_eval/recursive_predictions_known.svg){#fig-final-recursive-pred-known}
+
+![Evolution of the PDE system as predicted by the FNO. The upper plot shows the u variable in a moving reference frame $\psi = x - g(u)$, and the lower plot shows the injection pressure $u_p$.](figures/final_eval/recursive_prediction_known.png){#fig-final-recursive-pred-known-whole}
+
+We see that the general trend is somewhat preserved, compared to @fig-final-sim-known. The discrepency between the FNO predictions and the simulation starts to drift apart early, and is big quite significant at t = 270. However, towards the end of the simulation the FNO predictions are again close to the simulation. It seems like the accumulation of errors may be balanced by the forcing of the system by the controlled injection pressure.
+
+#### Prediction with a unseen control policy
+
+We now switch to a control policy the FNO as not been trained on. We use the same initial condition as in the previous section(see @fig-final-init-known), but now use a sawtooth control policy with a period of 100 time steps. The simulation is run for 410 time steps of length 1, and is shown together with a recursive prediction of the FNO in @fig-final-sim-pred-saw.
+
+::::: {#fig-final-sim-pred-saw}
+::: {#fig-final-sim-saw}
+![](figures/final_eval/simulation_saw.png) Simulation of the RDE using the finite difference solver.
+:::
+
+::: {#fig-final-pred-saw}
+![](figures/final_eval/fno_solution_saw.png) Recursive prediction using the FNO.
+:::
+
+Simulation of the RDE using the finite difference solver and recursive prediction of the FNO. The upper plot in each subfigure shows the u variable in a moving reference frame $\psi = x - g(u)$, and the lower plot shows the injection pressure $u_p$.
+:::::
+
+@fig-predictions-saw shows the one-step-ahead and recursive predictions of the FNO, respectively. We see that at $t=102$ the one-step-ahead prediction is not as good as in @fig-final-one-step-pred-known, and the recursive predictions at that point are not aligned with the simulation. This seems to be caused by the sawtooth control policy. The FNOs is not used to seeing so large drops in injection pressure, and it seems to struggle to adapt to the new control policy. At $t=190$, towards the end of a sawtooth period, the one-step-ahead prediction is again very good, and the recursive predictions are much closer, although still a bit off, to the simulation than just after the sudden drop.
+
+::::: {#fig-predictions-saw}
+::: {#fig-predictions-saw-one-step}
+![](figures/final_eval/one_step_saw.svg)
+
+One-step-ahead predictions
+:::
+
+::: {#fig-predictions-saw-recursive}
+![](figures/final_eval/recursive_predictions_saw.svg)
+
+Recursive predictions
+:::
+
+One-step-ahead and recursive predictions of the FNO for the sawtooth control policy.
+:::::
+
+#### Prediction with an unseen initial condition
+
+Here we briefly look at the performance of the FNO on an unseen initial condition. We use a sinusoidal control policy, identical to one of the policies used in the training data, and an initial condition that is significantly different from the ones used in the training data, see @fig-final-init-sech.
+
+![Initial condition for the sinusoidal control policy. The upper plot shows the u variable, and the lower plot shows the $\lambda$ variable.](figures/final_eval/initial_condition_sech.svg){#fig-final-init-sech}
+
+Although the FNO performance on an unseen policy is much more relevant in the reinforcement learning context, we include this investigation out of curiosity.
+
+With this new initial condition, the FNO struggles significantly more than in the previous examples. @fig-final-preds-sech shows the one-step-ahead and recursive predictions of the FNO. We see that even the one-step predictions are wildly inaccurate at $t=2$, altough it gets better at $t=5$. The recursive predictions are terrible, and leads to a blowup after a very short time.
+
+::::: {#fig-final-preds-sech}
+::: {#fig-final-preds-sech-one-step}
+![](figures/final_eval/one_step_sech.svg)
+
+One-step-ahead predictions
+:::
+
+::: {#fig-final-preds-sech-recursive}
+![](figures/final_eval/recursive_predictions_sech.svg)
+
+Recursive predictions
+:::
+
+One-step-ahead and recursive predictions of the FNO for the sinusoidal control policy.
+:::::
+
+## Discussion of Results
+
+-   FNO can accuratelly predict the next state
+-   recursive prediction struggles sometimes in difficult cases, but catches up later
+-   able to handle a new policy behaviour ok, but very good
+    -   not dettrimental. in practice would not use immeadiately with new policy, but train on the data from the policy?
+-   time-performance already much faster than simulation
 
 ## Conclusions and Future Work
 
+-   actaully implement in RL loop
+    -   test how it does on when the policy is changing
+    -   could be useful to do pre-training, not from scratch every time a new policy is used
+    -   test if the discrepency is that important: is it ok to use FNO for fast training or sort of pretraining for the policy, and then use the simulator to fine tune?
+-   bigger cases
+    -   more complex models
+    -   more complex environments
+
 ### Summary of Findings
-
-### Critical Assessment
-
-### Future Improvements
-
--   use in RL loop
--   more complex models
--   more complex environments
 
 ## References
 
 ::: {#refs}
 :::
 
-## Appendix
+## Appendix {#sec-appendix}
 
 ### Code Implementation
 
