@@ -67,11 +67,11 @@ function evaluate_test_loss(model, ps, st, test_dataloader, dev)
     return mean(test_losses)
 end
 
-function get_init_trainstate(;model, ps, st, lr=0.01)
+function get_init_trainstate(model, ps, st, lr=0.01)
     return Training.TrainState(model, ps, st, OptimizationOptimisers.Adam(lr))
 end
 
-function get_init_trainstate(;config::FNOConfig, lr=0.01)
+function get_init_trainstate(config::FNOConfig, lr=0.01)
     model = FNO(config)
     return Training.TrainState(model, config.ps, config.st, OptimizationOptimisers.Adam(lr))
 end
@@ -105,7 +105,7 @@ function train!(model, ps, st, data::DataLoader;
                 tstate=nothing)
     
     if isnothing(tstate)
-        tstate = get_init_trainstate(;model, ps, st, lr)
+        tstate = get_init_trainstate(model, ps, st, lr)
     else
         Lux.Optimisers.adjust!(tstate, lr)
     end
@@ -181,7 +181,7 @@ function train!(config::FNOConfig, data::DataLoader,
     @assert length(lr) == length(epochs) "lr and epochs must have the same length"
     config.ps = config.ps |> dev
     config.st = config.st |> dev
-    tstate = get_init_trainstate(;config, lr=lr[1])
+    tstate = get_init_trainstate(config, lr=lr[1])
     
     for (lr_i, epochs_i) in zip(lr, epochs)
         train!(config, data, lr_i, epochs_i; test_data=test_data, dev=dev, AD=AD, tstate=tstate)
