@@ -11,8 +11,8 @@ const gdev = CUDADevice(device!(0))
 fig = Figure()
 ax = Axis(fig[1,1], yscale=log10, title="Final Test Loss", xlabel="Run", ylabel="Loss")
 barplot!(ax, df.run, df.final_test_loss)
-hlines!(ax, mean(df.final_test_loss), color=:red, linestyle=:dash, alpha=0.5)
-hlines!(ax, median(df.final_test_loss), color=:green, linestyle=:dash, alpha=0.5)
+# hlines!(ax, mean(df.final_test_loss), color=:red, linestyle=:dash, alpha=0.5)
+# hlines!(ax, median(df.final_test_loss), color=:green, linestyle=:dash, alpha=0.5)
 fig
 ##
 extra_save_dir = joinpath(@__DIR__, "..", "..", "..", "..", 
@@ -40,7 +40,7 @@ sim_test_data = run_policy(policy, env)
 plot_initial_conditions(env,
      save_dir=extra_save_dir,
      title="Initial condition",
-     subtitle="Weighted combination of shockwaves",
+     subtitle="Weighted combination of shock profiles",
      savename="initial_condition_known")
 ##
 
@@ -52,6 +52,16 @@ hist_fig = plot_shifted_history(sim_test_data,
 rowsize!(hist_fig.layout, 2, Relative(1/4))
 display(hist_fig)
 save(joinpath(extra_save_dir, "simulation_known.png"), hist_fig)
+## Plot losses for all final FNOs
+one_step_losses, recursive_losses = evaluate_operators(;df, sim_test_data, gdev, cdev)
+##
+fig = Figure(size=(800, 500))
+ax = Axis(fig[1,1], title="One-step loss", xlabel="Run", ylabel="Loss")
+barplot!(ax, df.run, one_step_losses)
+ax = Axis(fig[1,2], title="Recursive loss", xlabel="Run", ylabel="Loss")
+barplot!(ax, df.run, recursive_losses)
+display(fig)
+save(joinpath(extra_save_dir, "losses_known.svg"), fig)
 ##
 rec_sim_test_data = replace_sim_with_prediction(;sim_test_data, fno_config, gdev, cdev)
 rec_hist_fig = plot_shifted_history(rec_sim_test_data,
@@ -108,6 +118,17 @@ display(rec_hist_fig)
 save(joinpath(extra_save_dir, "fno_solution_saw.png"), rec_hist_fig)
 
 
+## Plot losses for all final FNOs
+one_step_losses, recursive_losses = evaluate_operators(;df, sim_test_data, gdev, cdev)
+##
+fig = Figure(size=(800, 500))
+ax = Axis(fig[1,1], title="One-step loss", xlabel="Run", ylabel="Loss")
+barplot!(ax, df.run, one_step_losses)
+ax = Axis(fig[1,2], title="Recursive loss", xlabel="Run", ylabel="Loss")
+barplot!(ax, df.run, recursive_losses)
+display(fig)
+save(joinpath(extra_save_dir, "losses_saw.svg"), fig)
+
 
 ## plot selected predictions
 fig = compare_to_policy(;fnoconfig=fno_config, 
@@ -122,7 +143,6 @@ display(fig)
 save(joinpath(extra_save_dir, "recursive_predictions_saw.svg"), fig)
 
 ## Test with unseen initial condition, but seen policy
-using SpecialFunctions
 function custom_init(x;c = [1f0,3f0,5f0], m=[10f0,4f0,10f0])
     return 1f0 .* sech.((x .- c[1]).*m[1]) .- 
            0.2f0 .* sech.((x .- c[2]).*m[2]) .+ 
@@ -149,6 +169,17 @@ hist_fig = plot_shifted_history(sim_test_data,
 rowsize!(hist_fig.layout, 2, Relative(1/4))
 display(hist_fig)
 save(joinpath(extra_save_dir, "test_simulation_sech.png"), hist_fig)
+
+## Plot losses for all final FNOs
+one_step_losses, recursive_losses = evaluate_operators(;df, sim_test_data, gdev, cdev)
+##
+fig = Figure(size=(800, 500))
+ax = Axis(fig[1,1], title="One-step loss", xlabel="Run", ylabel="Loss")
+barplot!(ax, df.run, one_step_losses)
+ax = Axis(fig[1,2], title="Recursive loss", xlabel="Run", ylabel="Loss")
+barplot!(ax, df.run, recursive_losses)
+display(fig)
+save(joinpath(extra_save_dir, "losses_sech.svg"), fig)
 
 ## plot selected predictions
 fig = compare_to_policy(;fnoconfig=fno_config, 

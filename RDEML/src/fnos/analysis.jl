@@ -13,16 +13,22 @@ function compare_to_policy(;fnoconfig::FNOConfig, sim_test_data, env, cdev, gdev
     if recursive
         title="Recursive prediction"
         data = recursive_prediction(;fno, test_data, ps, st,
-         steps=length(test_states), gdev, cdev)
+        steps=length(test_states), gdev, cdev)
         predicted_states = data[:,1:2,:] #remove u_p
     else
         title="One-step-ahead prediction"
-        predictions, st = Lux.apply(fno, test_data[:,:,1:end-1] |> gdev, ps, st) |> cdev
-        predicted_states = zeros(Float32, N, 2, length(test_states))
-        predicted_states[:,:,1] = test_data[:,1:2,1] #set initial state
-        predicted_states[:,:,2:end] = predictions
+        predicted_states = one_step_prediction(;fno, test_data, ps, st, gdev, cdev)
     end
     plot_test_comparison(;n_t=length(test_states), test_data, predicted_states, title, x=env.prob.x, kwargs...)
+end
+
+function one_step_prediction(;fno, test_data, ps, st, gdev, cdev)
+    predictions, st = Lux.apply(fno, test_data[:,:,1:end-1] |> gdev, ps, st) |> cdev
+    N = size(test_data, 1)
+    predicted_states = zeros(Float32, N, 2, size(test_data, 3))
+    predicted_states[:,:,1] = test_data[:,1:2,1] #set initial state
+    predicted_states[:,:,2:end] = predictions
+    return predicted_states
 end
 
 function recursive_prediction(;fno, test_data, ps, st, steps, gdev, cdev)
@@ -71,4 +77,24 @@ function plot_initial_conditions(env; save_dir="", savename="", kwargs...)
         save(joinpath(save_dir, "$savename.svg"), fig)
     end
     return fig
+end
+
+
+function evaluate_operators(;df::DataFrame, sim_test_data, gdev, cdev)
+    n_fnos = size(df, 1)
+    one_step_losses = zeros(n_fnos)
+    recursive_losses = zeros(n_fnos)
+    test_data = sim_data_to_data_set(sim_test_data)
+    for i in 1:n_fnos
+        fno_config = df[i, :full_config]
+        model = FNO(fno_config)
+        ps = fno_config.ps |> gdev
+        st = fno_config.st |> gdev
+        one_step_preds = one_step_prediction(;fno=model, test_data, ps, st, gdev, cdev)
+        recursive_preds = recursive_prediction(;fno=model, test_data, ps, st, 
+            steps=length(sim_test_data.states), gdev, cdev)
+        one_step_losses[i] = MSELoss()(one_step_preds, test_data[:,1:2,:])
+        recursive_losses[i] = MSELoss()(recursive_preds[:,1:2,:], test_data[:,1:2,:])
+    end
+    return one_step_losses, recursive_losses
 end

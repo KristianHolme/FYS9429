@@ -3,6 +3,7 @@ module RDEML
     using Reexport
     using CairoMakie
     using Colors
+    using DataFrames
     using Dates
     using DrWatson
     @reexport using DRL_RDE_utils
@@ -58,25 +59,26 @@ module RDEML
     ##FNO functions
     include("fnos/data_gathering.jl")
     export get_data_policies, get_data_reset_strategies,
-        collect_data, save_data, DataGatherer, DataSetInfo,
-        prepare_dataset, generate_data, shuffle_batches!,
-        number_of_samples, calculate_number_of_batches,
-        FNODataset, create_dataloader
-
+    collect_data, save_data, DataGatherer, DataSetInfo,
+    prepare_dataset, generate_data, shuffle_batches!,
+    number_of_samples, calculate_number_of_batches,
+    FNODataset, create_dataloader
+    
     include("fnos/fno.jl")
     export train!, FNO, FNOConfig, number_of_batches
-
+    
+    include("fnos/utils.jl")
+    export train_and_save!, moving_average
     include("fnos/visualization.jl")
     export plot_losses, visualize_data, plot_test_comparison, 
         plot_parameter_analysis, plot_training_time_analysis, plot_losses_final_eval
 
     include("fnos/analysis.jl")
-    export compare_to_policy, replace_sim_with_prediction, plot_initial_conditions
+    export compare_to_policy, replace_sim_with_prediction, plot_initial_conditions,
+        one_step_prediction, recursive_prediction, evaluate_operators
 
     include("fnos/model_io.jl")
     export fnoconfig_to_dict, dict_to_fnoconfig
 
-    include("fnos/utils.jl")
-    export train_and_save!, moving_average
 
 end # module 
