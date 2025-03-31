@@ -88,9 +88,6 @@ display(fig)
 save(joinpath(extra_save_dir, "recursive_predictions_known.svg"), fig)
 
 
-
-
-
 ## Test with new policy
 env.prob.params.tmax = 410f0
 policy = SawtoothPolicy(env, 100f0, 0.95f0, 0.4f0)

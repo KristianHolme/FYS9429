@@ -108,12 +108,16 @@ function plot_test_comparison(;n_t, x, test_data, predicted_states, timesteps=[1
         tellwidth=false
     )
     
+    u_axes = []
+    λ_axes = []
     # Plot the data
     for (i, timestep) in enumerate(filter(x->x+1<=n_t, timesteps))
         row = i + 1
         Label(fig[row, 0], "t=$(timestep)", fontsize=16, font=:bold, tellwidth=false, tellheight=false)
         ax_u = Makie.Axis(fig[row, 1], xlabel="x", ylabel="u", ylabelrotation=0)
         ax_λ = Makie.Axis(fig[row, 2], xlabel="x", ylabel="λ", ylabelrotation=0)
+        push!(u_axes, ax_u)
+        push!(λ_axes, ax_λ)
         #plot input data
         if plot_input
             lines!(ax_u, x, test_data[:, 1, timestep], color=colors[3], linestyle=:dash)
@@ -126,6 +130,8 @@ function plot_test_comparison(;n_t, x, test_data, predicted_states, timesteps=[1
         lines!(ax_u, x, test_data[:, 1, timestep+1], color=colors[1], linestyle=:dash) #+1 because index 1 is time 0
         lines!(ax_λ, x, test_data[:, 2, timestep+1], color=colors[1], linestyle=:dash)
     end
+    linkaxes!(u_axes...)
+    linkaxes!(λ_axes...)
     colsize!(fig.layout, 0, Relative(1/10))
     
     

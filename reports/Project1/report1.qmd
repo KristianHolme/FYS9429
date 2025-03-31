@@ -3,7 +3,9 @@ title: "Investigating Fourier Neural Operators for accelerating Deep Reinforceme
 #TODO: change title
 author: "Kristian Holme"
 date: today
-format: html
+format: 
+    html:
+        embed-resources: true
 editor: 
     render-on-save: true
 bibliography: references.bib
@@ -189,9 +191,9 @@ Using the hyperparameters found in the previous section, we train a final set of
 
 ### Prediction Performance
 
-The evaluation speed of the FNOs is the main motivation for investigating FNOs for RL. For the simple RDE model considered here, a single forward step using the custom finite difference solver is on the order of 4 milliseconds, while a single forward step using the FNOs is on the order of 700 microseconds (on GPU). See @sec-appendix-performance-benchmarks for details. So even for a small and fast simulation as in our case, the FNO still is almost six times faster. For larger models, the expected speed advantage is much more significant, as in e.g. [@kurth2023], which show a 80.000 times speed up in generating weather forecasts.
+The evaluation speed of the FNOs is the main motivation for investigating FNOs for RL. For the simple RDE model considered here, a single forward step using the custom finite difference solver is on the order of 1-2 milliseconds, while a single forward step using the FNOs is on the order of 1 millisecond (on GPU). This is including the time it takes to transfer the input data to the gpu, compute the prediction, and transfering the solution back to the cpu memory. See @sec-appendix-performance-benchmarks for details. So even for a small and fast simulation as in our case, the FNO does not offer a huge speedup. For larger models, the expected speed advantage is much more significant, as in e.g. [@kurth2023], which show a 80.000 times speed up in generating weather forecasts.
 
-#### Prediction on known data
+### Prediction on known data
 
 We start by using the best FNO from the final set of FNOS, as judged by final test loss, in a comparison with the finite difference solver. We construct an initial condition that is a weighted combination of different shock profiles. The initial condition of the main variables is shown in @fig-final-init-known. The initial injection pressure is set to $u_p \approx 0.71$.
 
@@ -199,7 +201,21 @@ We start by using the best FNO from the final set of FNOS, as judged by final te
 
 We use a stepwise constant control policy, with predetermined steps. The simulation is run for 410 time steps of length 1, and the evolution of the system is shown in @fig-final-sim-known.
 
-![Simulation of the RDE using the finite difference solver. The upper plot shows the u variable in a moving reference frame $\psi = x - g(u)$, and the lower plot shows the injection pressure $u_p$.](figures/final_eval/simulation_known.png){#fig-final-sim-known}
+:::{#fig-final-sim-pred-known}
+
+:::{#fig-final-sim-known}
+![](figures/final_eval/simulation_known.png)
+
+Finite difference solver
+:::
+
+:::{#fig-final-recursive-pred-known-whole}
+![](figures/final_eval/recursive_prediction_known.png)
+
+FNO recursive prediction
+:::
+Evolution of the PDE system as predicted by the FNO. The upper plots in the subfigures shows the u variable in a moving reference frame $\psi = x - g(u)$, and the lower plots shows the injection pressure $u_p$
+:::
 
 We now use the FNO to do one-step-ahead prediction. The predictions are shown in @fig-final-one-step-pred-known. We see that the predictions from the FNO are colesly aligned with the simulation from the finite difference solver.
 
@@ -209,7 +225,6 @@ When doing recursive prediction, the outcomes are subject to the accumulation of
 
 ![Recursive predictions of the RDE using the FNO.](figures/final_eval/recursive_predictions_known.svg){#fig-final-recursive-pred-known}
 
-![Evolution of the PDE system as predicted by the FNO. The upper plot shows the u variable in a moving reference frame $\psi = x - g(u)$, and the lower plot shows the injection pressure $u_p$.](figures/final_eval/recursive_prediction_known.png){#fig-final-recursive-pred-known-whole}
 
 We see that the general trend is somewhat preserved, compared to @fig-final-sim-known. The discrepency between the FNO predictions and the simulation starts to drift apart early, and is big quite significant at t = 270. However, towards the end of the simulation the FNO predictions are again close to the simulation. It seems like the accumulation of errors may be balanced by the forcing of the system by the controlled injection pressure.
 
@@ -217,17 +232,21 @@ We see that the general trend is somewhat preserved, compared to @fig-final-sim-
 
 ![One-step and recursive prediction losses for all 24 final FNOs, using a known control policy and initial condition.](figures/final_eval/losses_known.svg){#fig-final-all-losses-known}
 
-#### Prediction with a unseen control policy
+### Prediction with a unseen control policy
 
 We now switch to a control policy the FNO as not been trained on. We use the same initial condition as in the previous section(see @fig-final-init-known), but now use a sawtooth control policy with a period of 100 time steps. The simulation is run for 410 time steps of length 1, and is shown together with a recursive prediction of the FNO in @fig-final-sim-pred-saw.
 
 ::::: {#fig-final-sim-pred-saw}
 ::: {#fig-final-sim-saw}
-![](figures/final_eval/simulation_saw.png) Simulation of the RDE using the finite difference solver.
+![](figures/final_eval/simulation_saw.png)
+
+Finite difference solver.
 :::
 
 ::: {#fig-final-pred-saw}
-![](figures/final_eval/fno_solution_saw.png) Recursive prediction using the FNO.
+![](figures/final_eval/fno_solution_saw.png) 
+
+FNO recursive prediction.
 :::
 
 Simulation of the RDE using the finite difference solver and recursive prediction of the FNO. The upper plot in each subfigure shows the u variable in a moving reference frame $\psi = x - g(u)$, and the lower plot shows the injection pressure $u_p$.
@@ -255,7 +274,7 @@ One-step-ahead and recursive predictions of the FNO for the sawtooth control pol
 
 ![One-step and recursive prediction losses for all 24 final FNOs using the sawtooth control policy.](figures/final_eval/losses_saw.svg){#fig-final-all-losses-saw}
 
-#### Prediction with an unseen initial condition
+### Prediction with an unseen initial condition
 
 Here we briefly look at the performance of the FNO on an unseen initial condition. We use a sinusoidal control policy, identical to one of the policies used in the training data, and an initial condition that is significantly different from the ones used in the training data, see @fig-final-init-sech.
 
@@ -297,15 +316,17 @@ However, when examining recursive predictions, we observe that the FNO can strug
 
 The practical implications of these results are very promising. While the FNO's performance with new policies isn't flawless, it's not detrimental to the overall system. In a real-world implementation, we would likely not deploy the FNO immediately with a new policy, but rather train it on data collected from the new policy first. This approach would allow the FNO to learn the intricate dynamics uncovered by the new control strategy before being fully integrated into the system.
 
-Perhaps most promising, although not a new finding, is the significant performance advantage demonstrated by the FNO. Even for our relatively simple model, the FNO achieves approximately six times faster evaluation times compared to the finite difference solver. This speed advantage becomes even more compelling when considering more complex systems, where traditional simulation methods become increasingly computationally expensive.
-
 Another important consideration is the scope of our training data. While we generated a substantial dataset of approximately 350 thousand data points, this represents only a fraction of the data typically used in RL training. A typical RL agent, like the one used to generate a portion of our training data, often requires several million interactions with the environment before reaching a learning plateau. Given this context, there could be significant room for improvement in the FNO's performance through expanded training data. By incorporating more diverse trajectories and longer training sequences, we could potentially enhance the FNO's ability to capture complex system dynamics and improve its generalization capabilities. This would be particularly valuable for scenarios involving rapid policy changes or complex control strategies.
+
+
 
 ## Conclusions and Future Work
 
 Based on our findings, several promising directions emerge for future research and implementation. The most immediate next step would be to integrate the FNO directly into the reinforcement learning loop. This integration would allow us to test how the FNO performs when the policy is actively changing during training. We anticipate that this could be particularly valuable in scenarios where rapid policy adaptation is required.
 
 A key consideration in this integration would be the approach to training. Rather than retraining the FNO from scratch for each new policy, it could be interesting to implement pre-training strategies. The FNO could be pre-trained on saved data, like we have done here, and then fine-tuned on new data in the RL loop. Another pre-training-like strategy could be to use the pre-trained FNO as a placeholder for the simulator and rapidly train an RL agent, before fine tuning the agent using the more accurate traditional simulator. These approaches would leverage existing knowledge while allowing the FNO to adapt to new scenarios, and ultimately lead to faster and more efficient training of RL agents. The question of whether the observed discrepancies between FNO predictions and simulation results are significant enough to impact policy learning remains to be investigated.
+
+The ability of the FNO to accurately predict the next state of the system is promising and the ability for the recursive predictions to "catch up" after periods of large errors are interesting. However, the performance benefits of FNOs in this specific application is not likely to outweigh the error introduced, as the FNO is shown to only be marginally faster (although this could depend on the specific hardware available) than a classical finite difference solver. 
 
 Looking beyond the current implementation, there are opportunities to explore more complex scenarios. This includes investigating the FNO's performance with more sophisticated models and more complex environments. The current study focused on a relatively simple one-dimensional system, but the principles and findings could be extended to higher-dimensional systems or more complex physical phenomena. This expansion would help validate the broader applicability of FNOs in scientific computing and control applications.
 
@@ -324,43 +345,43 @@ The code used in this project is available at <https://github.com/KristianHolme/
 
 #### Performance benchmarks {#sec-appendix-performance-benchmarks}
 
-The following is the output from the \@benchmark macro from the package BenchmarkTools.jl, comparing the performance of the FNO to the custom finite difference solver. The benchmark was run on a machine with an Intel Xeon Gold 5120 CPU \@ 2.20GHz CPU and four NVIDIA GeForce RTX 2080 Ti GPUs (only one GPU was used).
+The following is the output from the \@benchmark macro from the package BenchmarkTools.jl, comparing the performance of the FNO to the custom finite difference solver. The benchmark was run on a machine with an Intel(R) Xeon(R) Gold 6226R CPU \@ 2.90GHz CPU and four NVIDIA A10 GPUs (only one GPU was used).
 
 ``` {#lst-bnch-fdm .jl lst-cap="Benchmark of finite difference solver"}
-BenchmarkTools.Trial: 976 samples with 1 evaluation per sample.
- Range (min … max):  2.358 ms … 22.576 ms  ┊ GC (min … max): 0.00% … 0.00%
- Time  (median):     3.979 ms              ┊ GC (median):    0.00%
- Time  (mean ± σ):   5.103 ms ±  3.152 ms  ┊ GC (mean ± σ):  0.00% ± 0.00%
+BenchmarkTools.Trial: 2146 samples with 1 evaluation per sample.
+ Range (min … max):  1.206 ms … 57.006 ms  ┊ GC (min … max): 0.00% … 92.46%
+ Time  (median):     1.678 ms              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   2.315 ms ±  2.602 ms  ┊ GC (mean ± σ):  8.73% ±  8.82%
 
-  █ ▃                                                         
-  █▄█▄▄▄▄▅▄▄▄▄▄▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃▃▂▃▂▂▂▂▃▂▂▂▂▁▁▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂ ▃
-  2.36 ms        Histogram: frequency by time        15.6 ms <
+  ██▆▅▄▃▃▂▂                                                  ▁
+  ████████████▇▇▇▆▆▅▆▆▆▅▅▅▄▆▄▄▄▅▅▅▃▄▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄ █
+  1.21 ms      Histogram: log(frequency) by time     17.3 ms <
 
- Memory estimate: 731.42 KiB, allocs estimate: 13170.
+ Memory estimate: 731.52 KiB, allocs estimate: 13173.
 ```
 
 ``` {#lst-bnch-fno-cpu .jl lst-cap="Benchmark of FNO on CPU"}
-BenchmarkTools.Trial: 850 samples with 1 evaluation per sample.
- Range (min … max):  4.195 ms … 28.837 ms  ┊ GC (min … max):  0.00% … 82.96%
- Time  (median):     4.684 ms              ┊ GC (median):     0.00%
- Time  (mean ± σ):   5.839 ms ±  3.042 ms  ┊ GC (mean ± σ):  19.35% ± 21.53%
+BenchmarkTools.Trial: 1611 samples with 1 evaluation per sample.
+ Range (min … max):  1.829 ms … 226.613 ms  ┊ GC (min … max):  0.00% …  4.31%
+ Time  (median):     2.024 ms               ┊ GC (median):     0.00%
+ Time  (mean ± σ):   3.079 ms ±   6.331 ms  ┊ GC (mean ± σ):  28.76% ± 25.60%
 
-   █▁                                                         
-  ███▆██▅▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▂▃▃▃▃▃▃▂ ▃
-  4.2 ms         Histogram: frequency by time          14 ms <
+  ▇█▆▃                                        ▂▁▁▁▁▁           
+  ████▇▅▅▄▅▅▄▁▁▁▁▁▁▁▁▁▁▁▄▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄▄▇█████████▇▅▅▅▄▆▁▄ █
+  1.83 ms      Histogram: log(frequency) by time      8.71 ms <
 
- Memory estimate: 34.05 MiB, allocs estimate: 276.
+ Memory estimate: 25.11 MiB, allocs estimate: 365.
 ```
 
 ``` {#lst-bnch-fno-gpu .jl lst-cap="Benchmark of FNO on GPU"}
-BenchmarkTools.Trial: 3418 samples with 1 evaluation per sample.
- Range (min … max):  686.855 μs … 15.791 ms  ┊ GC (min … max):  0.00% … 85.32%
- Time  (median):     718.528 μs              ┊ GC (median):     0.00%
- Time  (mean ± σ):     1.441 ms ±  2.850 ms  ┊ GC (mean ± σ):  43.16% ± 19.42%
+BenchmarkTools.Trial: 3137 samples with 1 evaluation per sample.
+ Range (min … max):  889.458 μs … 9.046 ms  ┊ GC (min … max):  0.00% … 82.34%
+ Time  (median):     971.067 μs             ┊ GC (median):     0.00%
+ Time  (mean ± σ):     1.576 ms ± 1.652 ms  ┊ GC (mean ± σ):  34.19% ± 24.27%
 
-  █                                                        ▁    
-  ██▁▃▁▁▁▁▁▁▁▁▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▅▅▇▇▇███ █
-  687 μs        Histogram: log(frequency) by time      13.3 ms <
+  █▆                                                    ▂▃▂▁   
+  ██▄▃▃██▁▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▃▁▁▁▁▁▁▁▁▁▁▁▁▁▃▁▁▁▁▁▁▁▁▁▁▁▄██████ █
+  889 μs       Histogram: log(frequency) by time      6.31 ms <
 
- Memory estimate: 50.20 KiB, allocs estimate: 1531.
+ Memory estimate: 83.75 KiB, allocs estimate: 2409.
 ```
