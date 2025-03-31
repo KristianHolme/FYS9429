@@ -7,15 +7,18 @@ format: html
 editor: 
     render-on-save: true
 bibliography: references.bib
+csl: ieee.csl
 ---
 
 ## Abstract
 
+This project investigates the potential of Fourier Neural Operators (FNOs) to accelerate Deep Reinforcement Learning in the context of fluid flow control. We focus on a one-dimensional wave propagation model representing a Rotating Detonation Engine (RDE), where traditional 3D simulation methods are computationally expensive. Our results demonstrate that FNOs can accurately predict system states while achieving approximately six times faster evaluation times compared to traditional finite difference solvers. While the FNO shows strong performance in one-step-ahead predictions, recursive predictions reveal some limitations during periods of rapid change. We explore the FNO's ability to handle new control policies and initial conditions, finding that while not perfect, it demonstrates reasonable adaptability. These findings suggest that FNOs could be valuable tools for accelerating RL training.
+
 ## Introduction
 
-Active flow control has traditionally been handled by classical control algorithms with reasonable success. However, the complex, nonlinear nature of fluid flows presents opportunities for improvement that can be exploited by sophisticated neural networks. Reinforcement Learning (RL) is emerging as a promising approach in this field, offering potential advantages through its ability to learn optimal control policies, although it remains computationally demanding.
+Active flow control has traditionally been handled by classical control algorithms with reasonable success. However, the complex, nonlinear nature of fluid flows presents opportunities for improvement that can be exploited by sophisticated neural networks. Reinforcement Learning (RL) is emerging as a promising approach in this field, offering potential advantages through its ability to learn optimal control policies [@rabault2023a; @vignon2023a], although it remains computationally demanding.
 
-Computational Fluid Dynamics (CFD) simulations are particularly expensive to run, and RL agents often require numerous ($O(10^5)$ to $O(10^7)$) interactions to learn effective strategies. This highlights the critical importance of sample efficiency—extracting more knowledge from less data. Fourier Neural Operators (FNO) represent a novel class of operators capable of learning to approximate solution operators in partial differential equations. These operators are characterized by their rapid evaluation times, high accuracy, and ability to capture underlying system dynamics. As such, FNOs can be leveraged to accelerate RL training by learning the solution operator given a state and control input. This approach enables solving PDEs directly through the FNO rather than through time-consuming classical simulations, potentially offering significant speedups in the training processes.
+Computational Fluid Dynamics (CFD) simulations are particularly expensive to run, and RL agents often require numerous ($O(10^5)$ to $O(10^7)$) interactions to learn effective strategies. This highlights the critical importance of sample efficiency—extracting more knowledge from less data. Fourier Neural Operators (FNOs) represent a novel class of operators capable of learning to approximate solution operators in partial differential equations. These operators are characterized by their rapid evaluation times, high accuracy, and ability to capture underlying system dynamics. As such, FNOs can be leveraged to accelerate RL training by learning the solution operator given a state and control input. This approach enables solving PDEs directly through the FNO rather than through time-consuming classical simulations, potentially offering significant speedups in the training processes.
 
 This project focuses on a small exploratory investigation of Fourier Neural Operators applied to the control of a one-dimensional wave propagation model. The model choice stems from work conducted prior to this course, providing continuity and established domain knowledge. We explore the possibility of using Fourier Neural Operators as a substitute for a traditional finite difference solver.
 
@@ -25,17 +28,17 @@ This section provides the theoretical foundation and context necessary to unders
 
 ### Deep Reinforcement Learning
 
-Reinforcement Learning (RL) is a framework for learning optimal control policies where an agent learns through trial and error by interacting with an environment. In this paradigm, the agent receives an observation of the environment's state and produces an action based on its current policy. The environment then updates according to this action, after which the agent receives a new observation along with a reward signal. This reward enables the agent to update its strategy, with the ultimate goal of learning a policy that maximizes cumulative rewards over time. The field encompasses various methodological approaches, including on-policy versus off-policy learning, and model-based versus model-free techniques. Notable algorithms in this space include Proximal Policy Optimization (PPO), Deep Q-Networks (DQN), Soft Actor-Critic (SAC), and Trust Region Policy Optimization (TRPO). @fig-rl-loop shows a schematic of the RL loop.
+Reinforcement Learning (RL) is a framework for learning optimal control policies where an agent learns through trial and error by interacting with an environment. In this paradigm, the agent receives an observation of the environment's state and produces an action based on its current policy (see [@sutton2018]). The environment then updates according to this action, after which the agent receives a new observation along with a reward signal. This reward enables the agent to update its strategy, with the ultimate goal of learning a policy that maximizes cumulative rewards over time. The field encompasses various methodological approaches, including on-policy or off-policy learning, and model-based or model-free techniques. Notable algorithms in this space include Proximal Policy Optimization (PPO), Deep Q-Networks (DQN), Soft Actor-Critic (SAC), and Trust Region Policy Optimization (TRPO). @fig-rl-loop shows a schematic of the RL loop.
 
 ![Schematic of the Reinforcement Learning loop. The agent observes the environment, takes an action, and receives a reward. This process is repeated until the agent learns a policy that maximizes the cumulative reward.](figures/DRL-loop.drawio.svg){#fig-rl-loop}
 
 ### Fourier Neural Operators
 
-Fourier Neural Operators (FNO) represent a novel class of operators designed to learn approximations of solution operators in partial differential equations. Instead of modeling the solution function directly, i.e. approximating $u(x, t)$ by $u_\theta(x, t)$, as is the approach taken by Physics-Informed Neural Networks (PINNs), FNOs learn the solution operator, $\mathcal{G}: (u(x, t_i), \lambda(x, t_i), u_p(x, t_i)) \mapsto (u(x, t_{i+1}), \lambda(x, t_{i+1}))$, which is a function that maps a state and control input to a subsequent state. These operators offer significant advantages through their fast evaluation times, high accuracy, and ability to capture the underlying dynamics of complex systems. @fig-fno shows a schematic of the FNO.
+Fourier Neural Operators (FNO, [@li]) represent a novel class of operators designed to learn approximations of solution operators in partial differential equations. Instead of modeling the solution function directly, i.e. approximating $u(x, t)$ by $u_\theta(x, t)$, as is the approach taken by Physics-Informed Neural Networks (PINNs), FNOs learn the solution operator, $\mathcal{G}: (u(x, t_i), \lambda(x, t_i), u_p(x, t_i)) \mapsto (u(x, t_{i+1}), \lambda(x, t_{i+1}))$, which is a function that maps a state and control input to a subsequent state. These operators offer significant advantages through their fast evaluation times, high accuracy, and ability to capture the underlying dynamics of complex systems. @fig-fno shows a schematic of the FNO.
 
 In the context of reinforcement learning, FNOs can be leveraged to accelerate training by learning the solution operator that maps state and control inputs to subsequent states. This approach creates a more efficient alternative to traditional simulation: instead of sending actions directly to the environment, control inputs are processed by the FNO, which predicts the resulting next state. This predicted state can then be used to calculate rewards and update the policy, potentially circumventing the need for expensive simulations during training.
 
-![Schematic of the Fourier Neural Operator. The input function, evaluated at equidistant points, is first lifted to a higher dimension by a neural network P. Then the data is passed through a number of fourier layers before being projected back down to the target dimension by a final neural network Q. In each fourier layer, the data $v$ is transformed using the Discrete Fourier Transform (DFT), and the the high frequencies is filtered out. The data, now in the frequency domain, undergoes a linear transformation, and is then transformed back from the frequency domain using the inverse DFT. The output from this fourier operations is then added to a linear transformation (W) of $v$ and passed through a nonlinear activation function. Herein, we use the generalized linear unit (GELU) as the activation function. Schematic adapted from [@li]](figures/fno.drawio.svg){#fig-fno}
+![Schematic of the Fourier Neural Operator. The input function, evaluated at equidistant points, is first lifted to a higher dimension by a neural network P. Then the data is passed through a number of fourier layers before being projected back down to the target dimension by a final neural network Q. In each fourier layer, the data $v$ is transformed using the Discrete Fourier Transform (DFT), and the the high frequencies is filtered out. The data, now in the frequency domain, undergoes a linear transformation, and is then transformed back from the frequency domain using the inverse DFT. The output from these fourier operations is then added to a linear transformation (W) of $v$ and passed through a nonlinear activation function. Herein, we use the gaussian error linear unit (GELU) as the activation function. Schematic adapted from [@li]](figures/fno.drawio.svg){#fig-fno}
 
 ### Rotating Detonation Engine
 
@@ -58,7 +61,7 @@ where
     \beta(u, s) &= \frac{su_p}{1+e^{k(u-u_p)}}.
 \end{align}
 
-This model as been shown accurately mimic the qualitative behavior of detonation waves in RDEs. It is highly general, and by tuning the parameters it can be made to mimic different RDE configurations[@koch2021a; @mendible2021].
+This model has been shown to accurately mimic the qualitative behavior of detonation waves in RDEs. It is highly general, and by tuning the parameters it can be made to mimic different RDE configurations[@koch2021a; @mendible2021].
 
 The model tracks two primary variables. $u$ represents flow properties, can be thought of as energy or pressure. $\lambda$ represents fuel consumption, that is, when $\lambda(x) = 0$ the maximum amount of fuel is present at $x$, and when $\lambda(x) = 1$ all the fuel is consumed at $x$. The injection pressure $u_p$ serves as the control parameter. All other parameters are given in @tbl-rde-params.
 
@@ -68,13 +71,15 @@ The model tracks two primary variables. $u$ represents flow properties, can be t
 
 : RDE parameters {#tbl-rde-params}
 
-The detonation wave manifests as a shock wave traveling circumferentially around the engine's cylindrical chamber. Control of the engine is achieved by modulating the injection pressure, which influences the wave dynamics. Performance evaluation of an RL agent is herein based on a weighted combination of different metrics, including wave span, periodicity, shock spacing, and the number of shock waves present. Notably, reinforcement learning agents can be trained to achieve specific objectives related to the number of shocks in the system. @fig-rde-sim shows a simulation of the RDE with step-wise changes in injection pressure. We observe that changing the pressure forces a change in the number of shock waves present, and the amplitude of the shock waves. The simulation starts with an initial "bump" configuration ($u(x) = \frac{3}{2} \text{sech}^{20}(x - 1)$) that is destabilized after the first pressure change. After a period of no clear shock waves, the system stabilizes in a two-shock configuration. Subsequent pressure changes cause new periods of instability followed by stabilization in three-, two-, and four-shock configurations.
+The detonation wave manifests as a shock wave traveling circumferentially around the engine's cylindrical chamber. Control of the engine is achieved by modulating the injection pressure, which influences the wave dynamics. Performance evaluation (the RL reward) of an RL agent is herein based on a weighted combination of different metrics, including wave span, periodicity, shock spacing, and the number of shock waves present.
+Notably, reinforcement learning agents can be trained to achieve specific objectives related to the number of shocks in the system. @fig-rde-sim shows a simulation of the RDE with step-wise changes in injection pressure, in a moving reference frame. In our dimensionless equations, the detonation wave speed is usually between 1 and 2, meaning that the waves would travel about 100 times circumferentially around the domain during a simulation of 400 time units(as in @fig-rde-sim), making it difficult to gain much insight from a static reference frame visualization.
+We observe that changing the pressure forces a change in the number of shock waves present, and the amplitude of the shock waves. The simulation starts with an initial "bump" configuration ($u(x) = \frac{3}{2} \text{sech}^{20}(x - 1)$) that is destabilized after the first pressure change. After a period of no clear shock waves, the system stabilizes in a two-shock configuration. Subsequent pressure changes cause new periods of instability followed by stabilization in three-, two-, and four-shock configurations.
 
 ![Example of an RDE simulation, with stepwise varying injection pressure. The upper plot shows the u variable in a moving reference frame $\psi = x - g(u)$ that tries to follow the shock waves. The lower plot shows the injection pressure $u_p$ as a function of time.](figures/simulation-control.png){#fig-rde-sim}
 
 ## Method
 
-In the current implementation, the Fourier Neural Operator is not directly integrated into the reinforcement learning loop. Instead, we adopt a data-driven approach where we generate simulation data and train the FNO to learn from these examples. This approach allows us to evaluate the FNO's capability to capture system dynamics without immediately incorporating it into the RL training process, although future work could explore such integration.
+In the current implementation, the Fourier Neural Operator is not directly integrated into the reinforcement learning loop. Instead, we generate simulation data and train the FNO to learn from these examples. This approach allows us to evaluate the FNO's capability to capture system dynamics without immediately incorporating it into the RL training process, although future work could explore such integration.
 
 ### Data Generation
 
@@ -84,7 +89,7 @@ Specifically, we used 11 different control policies, 8 different initialization 
 
 ### Training
 
-The training process for the Fourier Neural Operator involves a systematic hyperparameter sweep to optimize performance. We explore variations in batch size to balance computational efficiency with learning stability, network size to determine appropriate model capacity, and the number of Fourier modes to capture relevant frequency information from the system dynamics.The dataset is split into a training set and a test set, with 80% of the data used for training and 20% used for testing.
+The training process for the Fourier Neural Operator involves a systematic hyperparameter sweep to optimize performance. We explore variations in batch size to balance computational efficiency with learning stability, network size to determine appropriate model capacity, and the number of Fourier modes to capture relevant frequency information from the system dynamics. The dataset is split into a training set and a test set, with 80% of the data used for training and 20% used for testing.
 
 Early experiments performing hyperparameter sweeps over the learning rate showed that an initial learning rate of 0.01 was suitable. For the following sweeps, the training consisted of 30 epochs, with a starting learning rate of 0.01 for 15 epochs, a learning rate of 0.001 for the next 10 epochs, and a learning rate of 0.0003 for the final 5 epochs.
 
@@ -180,13 +185,13 @@ Based on the results in [@fig-fno-modes-analysis; -@fig-fno-depth-analysis; -@fi
 
 ## Results and Analysis
 
-Using the hyperparameters found in the previous section, we train a final set of FNOs, using different random seeds. We then evaluate the performance of the FNOs on two different simulation trajectories. The first trajectory is generated using a similar, but slightly different control policy and initialization strategy as is found in the training data. The second trajectory is generated using a different control policy and initialization strategy. We showcase two different prediction methods. The first, herein called one-step-ahead prediction, is the most straightforward method, where the FNO is used to predict the next state in the simulation, given the previous simulation state. The second method, herein called recursive prediction, is more relevant in an RL context, where the purpose of the FNO is the replace the finite difference simulator. In recursive prediction, the FNO is first given the initial conditions of the PDE system, and then recursively used to predict the next state in the simulation, given the previous predicted states, along with the injection pressure dictated by the control policy.
+Using the hyperparameters found in the previous section, we train a final set of 24 FNOs, using different random seeds. We then evaluate the performance of the FNOs on two different simulation trajectories. The first trajectory is generated using a similar, but slightly different control policy and initialization strategy as is found in the training data. The second trajectory is generated using a different control policy and initialization strategy. We showcase two different prediction methods. The first, herein called one-step-ahead prediction, is the most straightforward method, where the FNO is used to predict the next state in the simulation, given the previous simulation state. The second method, herein called recursive prediction, is more relevant in an RL context, where the purpose of the FNO is the replace the finite difference simulator. In recursive prediction, the FNO is first given the initial conditions of the PDE system, and then recursively used to predict the next state in the simulation, given the previous predicted states, along with the injection pressure dictated by the control policy.
 
 ### Prediction Performance
 
-The evaluation speed of the FNOs is the main motivation for investigating FNOs for RL. For the simple RDE model considered here, a single forward step using the custom finite difference solver is on the order of 4 milliseconds, while a single forward step using the FNOs is on the order of 700 microseconds (on GPU). See @sec-appendix for details. So even for a small and fast simulation as in our case, the FNO still is almost six times faster. For larger models, the expected speed advantage is much more significant, as in e.g. [@kurth2023]
+The evaluation speed of the FNOs is the main motivation for investigating FNOs for RL. For the simple RDE model considered here, a single forward step using the custom finite difference solver is on the order of 4 milliseconds, while a single forward step using the FNOs is on the order of 700 microseconds (on GPU). See @sec-appendix-performance-benchmarks for details. So even for a small and fast simulation as in our case, the FNO still is almost six times faster. For larger models, the expected speed advantage is much more significant, as in e.g. [@kurth2023], which show a 80.000 times speed up in generating weather forecasts.
 
-#### Prediciton on known data
+#### Prediction on known data
 
 We start by using the best FNO from the final set of FNOS, as judged by final test loss, in a comparison with the finite difference solver. We construct an initial condition that is a weighted combination of different shock profiles. The initial condition of the main variables is shown in @fig-final-init-known. The initial injection pressure is set to $u_p \approx 0.71$.
 
@@ -207,6 +212,10 @@ When doing recursive prediction, the outcomes are subject to the accumulation of
 ![Evolution of the PDE system as predicted by the FNO. The upper plot shows the u variable in a moving reference frame $\psi = x - g(u)$, and the lower plot shows the injection pressure $u_p$.](figures/final_eval/recursive_prediction_known.png){#fig-final-recursive-pred-known-whole}
 
 We see that the general trend is somewhat preserved, compared to @fig-final-sim-known. The discrepency between the FNO predictions and the simulation starts to drift apart early, and is big quite significant at t = 270. However, towards the end of the simulation the FNO predictions are again close to the simulation. It seems like the accumulation of errors may be balanced by the forcing of the system by the controlled injection pressure.
+
+@fig-final-all-losses-known shows the one-step and recursive prediction losses for all 24 FNOs. We see that the recursive predictions are generally worse than the one-step-ahead predictions, and that some FNOs lead to a blowup in the recursive predictions.
+
+![One-step and recursive prediction losses for all 24 final FNOs, using a known control policy and initial condition.](figures/final_eval/losses_known.svg){#fig-final-all-losses-known}
 
 #### Prediction with a unseen control policy
 
@@ -242,6 +251,10 @@ Recursive predictions
 One-step-ahead and recursive predictions of the FNO for the sawtooth control policy.
 :::::
 
+@fig-final-all-losses-saw shows the one-step and recursive prediction losses for all 24 FNOs using the sawtooth control policy.
+
+![One-step and recursive prediction losses for all 24 final FNOs using the sawtooth control policy.](figures/final_eval/losses_saw.svg){#fig-final-all-losses-saw}
+
 #### Prediction with an unseen initial condition
 
 Here we briefly look at the performance of the FNO on an unseen initial condition. We use a sinusoidal control policy, identical to one of the policies used in the training data, and an initial condition that is significantly different from the ones used in the training data, see @fig-final-init-sech.
@@ -250,7 +263,11 @@ Here we briefly look at the performance of the FNO on an unseen initial conditio
 
 Although the FNO performance on an unseen policy is much more relevant in the reinforcement learning context, we include this investigation out of curiosity.
 
-With this new initial condition, the FNO struggles significantly more than in the previous examples. @fig-final-preds-sech shows the one-step-ahead and recursive predictions of the FNO. We see that even the one-step predictions are wildly inaccurate at $t=2$, altough it gets better at $t=5$. The recursive predictions are terrible, and leads to a blowup after a very short time.
+@fig-final-sim-sech shows the simulation of the RDE using the finite difference solver.
+
+![Simulation of the RDE with a new initial condition using the finite difference solver. The upper plot shows the u variable in a moving reference frame $\psi = x - g(u)$, and the lower plot shows the injection pressure $u_p$.](figures/final_eval/test_simulation_sech.png){#fig-final-sim-sech}
+
+With this new initial condition, the FNO struggles significantly more than in the previous examples. @fig-final-preds-sech shows the one-step-ahead and recursive predictions of the FNO. We see that even the one-step predictions are wildly inaccurate at $t=2$, although it gets better at $t=5$. The recursive predictions are terrible, and leads to a blowup after a very short time.
 
 ::::: {#fig-final-preds-sech}
 ::: {#fig-final-preds-sech-one-step}
@@ -268,25 +285,29 @@ Recursive predictions
 One-step-ahead and recursive predictions of the FNO for the sinusoidal control policy.
 :::::
 
+@fig-final-all-losses-sech shows the one-step and recursive prediction losses for all 24 FNOs using the sinusoidal control policy.
+
+![One-step and recursive prediction losses for all 24 final FNOs using the sinusoidal control policy with a new initial condition.](figures/final_eval/losses_sech.svg){#fig-final-all-losses-sech}
+
 ## Discussion of Results
 
--   FNO can accuratelly predict the next state
--   recursive prediction struggles sometimes in difficult cases, but catches up later
--   able to handle a new policy behaviour ok, but very good
-    -   not dettrimental. in practice would not use immeadiately with new policy, but train on the data from the policy?
--   time-performance already much faster than simulation
+Our investigation reveals several key findings about the performance and potential of Fourier Neural Operators in this context. First, we demonstrate that FNOs can accurately predict the next state of the system, showing strong alignment with the finite difference solver's results. This accuracy is particularly evident in one-step-ahead predictions, where the FNO's predictions closely match the simulation output.
+
+However, when examining recursive predictions, we observe that the FNO can struggle in challenging scenarios, particularly during periods of rapid change or instability. Interestingly, the system often shows resilience by "catching up" later, suggesting that while there may be temporary deviations, the FNO maintains a good understanding of the underlying dynamics. This behavior is particularly evident when dealing with new control policies, where the FNO demonstrates reasonable adaptability, though not perfect performance.
+
+The practical implications of these results are very promising. While the FNO's performance with new policies isn't flawless, it's not detrimental to the overall system. In a real-world implementation, we would likely not deploy the FNO immediately with a new policy, but rather train it on data collected from the new policy first. This approach would allow the FNO to learn the intricate dynamics uncovered by the new control strategy before being fully integrated into the system.
+
+Perhaps most promising, although not a new finding, is the significant performance advantage demonstrated by the FNO. Even for our relatively simple model, the FNO achieves approximately six times faster evaluation times compared to the finite difference solver. This speed advantage becomes even more compelling when considering more complex systems, where traditional simulation methods become increasingly computationally expensive.
+
+Another important consideration is the scope of our training data. While we generated a substantial dataset of approximately 350 thousand data points, this represents only a fraction of the data typically used in RL training. A typical RL agent, like the one used to generate a portion of our training data, often requires several million interactions with the environment before reaching a learning plateau. Given this context, there could be significant room for improvement in the FNO's performance through expanded training data. By incorporating more diverse trajectories and longer training sequences, we could potentially enhance the FNO's ability to capture complex system dynamics and improve its generalization capabilities. This would be particularly valuable for scenarios involving rapid policy changes or complex control strategies.
 
 ## Conclusions and Future Work
 
--   actaully implement in RL loop
-    -   test how it does on when the policy is changing
-    -   could be useful to do pre-training, not from scratch every time a new policy is used
-    -   test if the discrepency is that important: is it ok to use FNO for fast training or sort of pretraining for the policy, and then use the simulator to fine tune?
--   bigger cases
-    -   more complex models
-    -   more complex environments
+Based on our findings, several promising directions emerge for future research and implementation. The most immediate next step would be to integrate the FNO directly into the reinforcement learning loop. This integration would allow us to test how the FNO performs when the policy is actively changing during training. We anticipate that this could be particularly valuable in scenarios where rapid policy adaptation is required.
 
-### Summary of Findings
+A key consideration in this integration would be the approach to training. Rather than retraining the FNO from scratch for each new policy, it could be interesting to implement pre-training strategies. The FNO could be pre-trained on saved data, like we have done here, and then fine-tuned on new data in the RL loop. Another pre-training-like strategy could be to use the pre-trained FNO as a placeholder for the simulator and rapidly train an RL agent, before fine tuning the agent using the more accurate traditional simulator. These approaches would leverage existing knowledge while allowing the FNO to adapt to new scenarios, and ultimately lead to faster and more efficient training of RL agents. The question of whether the observed discrepancies between FNO predictions and simulation results are significant enough to impact policy learning remains to be investigated.
+
+Looking beyond the current implementation, there are opportunities to explore more complex scenarios. This includes investigating the FNO's performance with more sophisticated models and more complex environments. The current study focused on a relatively simple one-dimensional system, but the principles and findings could be extended to higher-dimensional systems or more complex physical phenomena. This expansion would help validate the broader applicability of FNOs in scientific computing and control applications.
 
 ## References
 
@@ -297,25 +318,11 @@ One-step-ahead and recursive predictions of the FNO for the sinusoidal control p
 
 ### Code Implementation
 
--   In julia
-    -   fast, jit, multiple dispatch
--   made a module RDEML.jl
-
-#### Dependencies
-
--   Lux.jl
--   NeuralOperators.jl
--   MLUtils.jl
--   RDE.jl
--   DRL_RDE_utils.jl
-    -   RLBridge.jl
-    -   RDE_Env.jl
-    -   stable_baselines3
-    -   sbx: stable-baselines-jax -many more, see `Project.toml`
+The code used in this project is available at <https://github.com/KristianHolme/FYS9429/tree/main/RDEML>. It depends on several registered Julia packages, and a few custom packages. The details of the dependencies are listed in the readme file of the repository. The most notable packages used are Lux.jl [@pal2025; @pal2023] for neural networks, NeuralOperators.jl for the Fourier Neural Operator, and MLUtils.jl for data loading and evaluation.
 
 ### Additional Results
 
-#### Performance benchmarks
+#### Performance benchmarks {#sec-appendix-performance-benchmarks}
 
 The following is the output from the \@benchmark macro from the package BenchmarkTools.jl, comparing the performance of the FNO to the custom finite difference solver. The benchmark was run on a machine with an Intel Xeon Gold 5120 CPU \@ 2.20GHz CPU and four NVIDIA GeForce RTX 2080 Ti GPUs (only one GPU was used).
 
@@ -357,5 +364,3 @@ BenchmarkTools.Trial: 3418 samples with 1 evaluation per sample.
 
  Memory estimate: 50.20 KiB, allocs estimate: 1531.
 ```
-
-### Technical Details
