@@ -285,7 +285,7 @@ Recursive predictions
 One-step-ahead and recursive predictions of the FNO for the sinusoidal control policy.
 :::::
 
-@fig-final-all-losses-sech shows the one-step and recursive prediction losses for all 24 FNOs using the sinusoidal control policy.
+@fig-final-all-losses-sech shows the one-step and recursive prediction losses for all 24 FNOs using the sinusoidal control policy. We note that there was just one of the FNOs that did lead to a blowup resulting in a NaN loss, but this FNO was still wildly off from the correct results, similar to the the solution at $t=5$ in @fig-final-preds-sech-recursive.
 
 ![One-step and recursive prediction losses for all 24 final FNOs using the sinusoidal control policy with a new initial condition.](figures/final_eval/losses_sech.svg){#fig-final-all-losses-sech}
 
