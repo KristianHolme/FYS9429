@@ -62,10 +62,10 @@ module RDEML
     collect_data, save_data, DataGatherer, DataSetInfo,
     prepare_dataset, generate_data, shuffle_batches!,
     number_of_samples, calculate_number_of_batches,
-    FNODataset, create_dataloader
+    FNODataset, create_dataloader, sim_data_to_data_set
     
     include("fnos/fno.jl")
-    export train!, FNO, FNOConfig, number_of_batches
+    export train!, FNO, FNOConfig, number_of_batches, TrainingHistory
     
     include("fnos/utils.jl")
     export train_and_save!, moving_average
@@ -75,7 +75,7 @@ module RDEML
 
     include("fnos/analysis.jl")
     export compare_to_policy, replace_sim_with_prediction, plot_initial_conditions,
-        one_step_prediction, recursive_prediction, evaluate_operators
+        one_step_prediction, recursive_prediction, evaluate_operators, evaluate_test_loss
 
     include("fnos/model_io.jl")
     export fnoconfig_to_dict, dict_to_fnoconfig
