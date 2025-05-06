@@ -1,0 +1,7 @@
+name = "project_2"
+
+[deps]
+DRiL = "49b37b9d-a8e6-4364-9144-4677bcb8a7f0"
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
