@@ -23,18 +23,31 @@ mutable struct PendulumEnv <: AbstractEnv
     end
 end
 
-function reset!(env::PendulumEnv)
-    reset!(env.problem)
+function DRiL.reset!(env::PendulumEnv, rng::AbstractRNG=default_rng())
+    reset!(env.problem, rng)
     env.step = 0
 end
 
-function reset!(problem::PendulumProblem)
-    problem.theta = rand(Float32) * 2π
-    problem.velocity = (rand(Float32) * 16.0f0 - 8.0f0)
+function reset!(problem::PendulumProblem, rng::AbstractRNG=default_rng())
+    problem.theta = rand(rng, Float32) * 2π
+    problem.velocity = (rand(rng, Float32) * 16.0f0 - 8.0f0)
     problem.torque = 0.0f0
 end
 
-function act!(env::PendulumEnv, action::Float32)
+function reward(env::PendulumEnv)
+    theta = env.problem.theta
+    velocity = env.problem.velocity
+    reward = -(theta^2 + 0.1f0*velocity^2 + 0.001f0*env.problem.torque^2)
+    return reward
+end
+
+function DRiL.act!(env::PendulumEnv, action::AbstractArray{Float32, 1})
+    @info "acting with array"
+    DRiL.act!(env, action[1])
+end
+
+function DRiL.act!(env::PendulumEnv, action::Float32)
+    @info "acting with float"
     pend = env.problem
     pend.torque = action
     g = pend.gravity
@@ -45,24 +58,19 @@ function act!(env::PendulumEnv, action::Float32)
     pend.velocity += ( (3*g/2L)*sin(theta) + 3/(m*L^2)*pend.torque ) * dt
     pend.theta += pend.velocity * dt
     env.step += 1
+    return reward(env)
 end
 
-function observe(env::PendulumEnv)
+function DRiL.observe(env::PendulumEnv)
     x = cos(env.problem.theta)
     y = sin(env.problem.theta)
     scaled_vel = env.problem.velocity / 8.0f0
     return [x, y, scaled_vel]
 end
 
-terminated(env::PendulumEnv) = false
-truncated(env::PendulumEnv) = env.step >= 200
-action_space(env::PendulumEnv) = env.action_space
-observation_space(env::PendulumEnv) = env.observation_space
-get_info(env::PendulumEnv) = Dict(:step => env.step)
+DRiL.terminated(env::PendulumEnv) = false
+DRiL.truncated(env::PendulumEnv) = env.step >= 200
+DRiL.action_space(env::PendulumEnv) = env.action_space
+DRiL.observation_space(env::PendulumEnv) = env.observation_space
+DRiL.get_info(env::PendulumEnv) = Dict("step" => env.step)
 
-function reward(env::PendulumEnv)
-    theta = env.problem.theta
-    velocity = env.problem.velocity
-    reward = -(theta^2 + 0.1f0*velocity^2 + 0.001f0*env.problem.torque^2)
-    return reward
-end

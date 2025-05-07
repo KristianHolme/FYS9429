@@ -2,6 +2,9 @@ name = "project_2"
 
 [deps]
 DRiL = "49b37b9d-a8e6-4364-9144-4677bcb8a7f0"
+Lux = "b2108857-7c20-44ae-9111-449ecde12c47"
+MLUtils = "f1d291b0-491e-4a28-83b9-f70985020b54"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
