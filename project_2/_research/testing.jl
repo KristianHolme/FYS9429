@@ -50,7 +50,9 @@ model = Chain(;
         critic
     )
 )
-model[2]
+model.actorCritic.layer_1
+
+
 
 ps, st = Lux.setup(MersenneTwister(1234), model)
 x = rand(Float32, 4, 1)
@@ -61,3 +63,109 @@ critic_out = model.actorCritic.critic(feats)
 
 ps
 st
+
+##
+using Lux, Zygote, Optimisers
+abstract type AbstractPolicy <: Lux.AbstractLuxLayer end
+struct MyACPolicy <: AbstractPolicy
+    feature_extractor::Chain
+    actor_head::Dense
+    critic_head::Dense
+    log_std_init::AbstractFloat
+end
+
+function Lux.initialparameters(rng::AbstractRNG, policy::MyACPolicy)
+    params = (:feature_extractor => Lux.initialparameters(rng, policy.feature_extractor),
+               :actor_head => Lux.initialparameters(rng, policy.actor_head),
+               :log_std_init => policy.log_std_init*ones(typeof(policy.log_std_init), policy.actor_head.out_dim),
+               :critic_head => Lux.initialparameters(rng, policy.critic_head))
+    return params
+end
+
+function Lux.initialstates(rng::AbstractRNG, policy::MyACPolicy)
+    states = (:feature_extractor => Lux.initialstates(rng, policy.feature_extractor),
+               :actor_head => Lux.initialstates(rng, policy.actor_head),
+               :critic_head => Lux.initialstates(rng, policy.critic_head))
+    return states
+end
+
+Lux.parameterlength(policy::MyACPolicy) = Lux.parameterlength(policy.feature_extractor) + Lux.parameterlength(policy.actor_head) + Lux.parameterlength(policy.critic_head)
+
+Lux.statelength(policy::MyACPolicy) = Lux.statelength(policy.feature_extractor) + Lux.statelength(policy.actor_head) + Lux.statelength(policy.critic_head)
+
+function MyACPolicy(in_dim, out_dim; log_std_init = 0.0f0)
+    return MyACPolicy(Chain(Dense(in_dim, 64, relu), Dense(64, 64, relu)), Dense(64, out_dim), Dense(64, 1), log_std_init)
+end
+
+function (policy::MyACPolicy)(x, ps, st)
+    feats = policy.feature_extractor(x, ps.feature_extractor, st.feature_extractor)
+    action_mean = policy.actor_head(feats, ps.actor_head, st.actor_head)
+    value = policy.critic_head(feats, ps.critic_head, st.critic_head)
+    return action_mean, value
+end
+
+function predict(policy::MyACPolicy, x, ps, st)
+    feats = policy.feature_extractor(x, ps.feature_extractor, st.feature_extractor)
+    action_mean = policy.actor_head(feats, ps.actor_head, st.actor_head)
+    return action_mean
+end
+
+function evaluate_actions(policy::MyACPolicy, x, actions, ps, st) end
+    
+
+policy = MyACPolicy(4, 1)
+ps, st = Lux.setup(MersenneTwister(1234), policy)
+ps
+###
+using Distributions
+using BenchmarkTools
+means = rand(Float32, 2, 3, 5)
+stds = rand(Float32, 2, 3, 5)
+
+function get_entropy(means, stds)
+    distris = MvNormal.(vec.(eachslice(means, dims=3)), vec.(eachslice(stds, dims=3)))
+    entropy.(distris)
+end
+get_entropy(means, stds)
+@benchmark get_entropy(means, stds) setup=(means = rand(Float32, 2, 3, 5), stds = rand(Float32, 2, 3, 5))
+
+
+distris = MvNormal.(vec.(eachslice(means, dims=3)), vec.(eachslice(stds, dims=3)))
+
+
+
+loglikelihood.(distris, vec.(eachslice(rand(Float32, 2, 3, 5), dims=3)))
+entropy.(distris)
+##
+
+##
+using DrWatson
+@quickactivate :project_2
+using Lux
+using DRiL
+using Debugger
+using Distributions
+##
+pend_env = PendulumEnv()
+pend_policy = ActorCriticPolicy(pend_env.observation_space, pend_env.action_space)
+rng = MersenneTwister(1234)
+ps, st = Lux.setup(rng, pend_policy)
+ps
+obs = observe(pend_env)
+feats, st = DRiL.extract_features(pend_policy, obs, ps, st)
+feats
+
+obs = rand(Float32, 3, 4)
+
+actions, st = DRiL.predict(pend_policy, obs, ps, st)
+
+means = rand(1,1)
+std = rand(1,1)
+Normal.(means, std)
+pend_policy.action_space.shape
+vec_actions = eachslice(means, dims=2)
+typeof(vec_actions)
+vec_actions[1]
+Normal.(means, Ref(0.1))
+
+
