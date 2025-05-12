@@ -23,7 +23,7 @@ mutable struct PendulumEnv <: AbstractEnv
     end
 end
 
-function DRiL.reset!(env::PendulumEnv, rng::AbstractRNG=default_rng())
+function DRiL.reset!(env::PendulumEnv, rng::AbstractRNG=Random.default_rng())
     reset!(env.problem, rng)
     env.step = 0
 end

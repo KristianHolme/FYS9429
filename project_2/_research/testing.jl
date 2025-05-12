@@ -145,6 +145,7 @@ using Lux
 using DRiL
 using Debugger
 using Distributions
+using Enzyme
 ##
 pend_env = PendulumEnv()
 pend_policy = ActorCriticPolicy(pend_env.observation_space, pend_env.action_space)
@@ -168,4 +169,35 @@ typeof(vec_actions)
 vec_actions[1]
 Normal.(means, Ref(0.1))
 
+## Testing functionality
+env = MultiThreadedParallelEnv([PendulumEnv(), PendulumEnv()])
+policy = ActorCriticPolicy(observation_space(env), action_space(env))
+agent = ActorCriticAgent(policy;verbose=2, n_steps =64)
+##
 
+n_steps = 64
+roll_buffer = RolloutBuffer(observation_space(env), action_space(env), 0.97, 0.99, n_steps, env.n_envs)
+fps = DRiL.collect_rollouts!(roll_buffer, agent, env)
+DRiL.reset!(roll_buffer)
+trajectories = DRiL.collect_trajectories(agent, env, n_steps)
+
+##
+
+learn!(agent, env, PPO(); max_steps=1000)
+
+##
+using Accessors
+struct MyStruct
+    a::NamedTuple
+    b::NamedTuple
+end
+ms = MyStruct((t_1 = 1, t_2 = "stratos"),(vei = :E6, vår = false))
+ms
+@set ms.a.t_1 = 2
+ms
+@reset ms.a.t_1 = 2
+temp = ms.b
+@reset temp.vei = :R3
+ms
+@reset ms.b.vei = :R4
+ms
