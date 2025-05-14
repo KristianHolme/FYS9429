@@ -12,13 +12,14 @@ mutable struct PendulumEnv <: AbstractEnv
     problem::PendulumProblem
     action_space::UniformBox
     observation_space::UniformBox
+    max_steps::Int
     step::Int
     function PendulumEnv(;problem = PendulumProblem(rand(Float32) * 2π, (rand(Float32) * 16.0f0 - 8.0f0),
-        0.0f0, 1.0f0, 1.0f0, 9.81f0, 0.01f0))
+        0.0f0, 1.0f0, 1.0f0, 9.81f0, 0.01f0), max_steps::Int=200)
         
         action_space = UniformBox(Float32, -2.0f0, 2.0f0, (1,))
         observation_space = UniformBox(Float32, -1f0, 1f0, (3,))
-        env = new(problem, action_space, observation_space, 0)
+        env = new(problem, action_space, observation_space, max_steps, 0)
         return env
     end
 end
@@ -34,20 +35,23 @@ function reset!(problem::PendulumProblem, rng::AbstractRNG=default_rng())
     problem.torque = 0.0f0
 end
 
+function pendulum_rewards(theta, velocity, torque)
+    return -theta^2 , -0.1f0*velocity^2 , -0.001f0*torque^2
+end
+
 function reward(env::PendulumEnv)
     theta = env.problem.theta
     velocity = env.problem.velocity
-    reward = -(theta^2 + 0.1f0*velocity^2 + 0.001f0*env.problem.torque^2)
+    reward = sum(pendulum_rewards(theta, velocity, env.problem.torque))
     return reward
 end
 
 function DRiL.act!(env::PendulumEnv, action::AbstractArray{Float32, 1})
-    @info "acting with array"
     DRiL.act!(env, action[1])
 end
 
 function DRiL.act!(env::PendulumEnv, action::Float32)
-    @info "acting with float"
+
     pend = env.problem
     pend.torque = action
     g = pend.gravity
@@ -56,7 +60,9 @@ function DRiL.act!(env::PendulumEnv, action::Float32)
     dt = pend.dt
     theta = pend.theta
     pend.velocity += ( (3*g/2L)*sin(theta) + 3/(m*L^2)*pend.torque ) * dt
+    pend.velocity = clamp(pend.velocity, -8.0f0, 8.0f0)
     pend.theta += pend.velocity * dt
+    pend.theta = mod(pend.theta + π, 2π) - π
     env.step += 1
     return reward(env)
 end
@@ -69,7 +75,7 @@ function DRiL.observe(env::PendulumEnv)
 end
 
 DRiL.terminated(env::PendulumEnv) = false
-DRiL.truncated(env::PendulumEnv) = env.step >= 200
+DRiL.truncated(env::PendulumEnv) = env.step >= env.max_steps
 DRiL.action_space(env::PendulumEnv) = env.action_space
 DRiL.observation_space(env::PendulumEnv) = env.observation_space
 DRiL.get_info(env::PendulumEnv) = Dict("step" => env.step)

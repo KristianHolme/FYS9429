@@ -186,18 +186,19 @@ trajectories = DRiL.collect_trajectories(agent, env, n_steps)
 learn!(agent, env, PPO(); max_steps=1000)
 
 ##
-using Accessors
-struct MyStruct
-    a::NamedTuple
-    b::NamedTuple
-end
-ms = MyStruct((t_1 = 1, t_2 = "stratos"),(vei = :E6, vår = false))
-ms
-@set ms.a.t_1 = 2
-ms
-@reset ms.a.t_1 = 2
-temp = ms.b
-@reset temp.vei = :R3
-ms
-@reset ms.b.vei = :R4
-ms
+using DrWatson
+@quickactivate :project_2
+using Lux
+using DRiL
+using Zygote
+##
+env = MultiThreadedParallelEnv([PendulumEnv() |> ScalingWrapperEnv for _ in 1:16])
+policy = ActorCriticPolicy(observation_space(env), action_space(env))
+agent = ActorCriticAgent(policy;verbose=2, n_steps =64, learning_rate=3f-4,
+    log_dir = "logs/testing/testing_logs", batch_size=64)
+single_env = PendulumEnv() |> ScalingWrapperEnv
+observations, actions, rewards = collect_trajectory(agent, single_env)
+plot_trajectory(PendulumEnv(), observations, actions, rewards)
+
+learn!(agent, env, PPO(); max_steps=200_000)
+
