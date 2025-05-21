@@ -131,6 +131,7 @@ function run_experiments(configs)
         produce_or_load(configs[i], datadir(folder, name * ".jld2")) do cfg
             result = run_experiment(cfg)
         end
+        params["i"]
     end
     @info "Finished running experiments"
     return nothing
