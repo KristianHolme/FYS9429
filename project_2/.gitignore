@@ -1,3 +1,7 @@
 Manifest.toml
 settings.json
 logs/
+.cursor/
+data/
+*.jld2
+*.mp4
