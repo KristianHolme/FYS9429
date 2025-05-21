@@ -8,7 +8,7 @@ pend_env = PendulumEnv()
 act!(pend_env, 0.0f0)
 update_viz!(pend_env.problem)
 for i in 1:200
-    act!(pend_env, rand(Float32)*4f0 - 2f0)
+    act!(pend_env, rand(Float32) * 4f0 - 2f0)
     update_viz!(pend_env.problem)
     sleep(pend_env.problem.dt)
 end
@@ -44,8 +44,8 @@ feat_extr = Dense(4, 64, relu)
 actor = Chain(Dense(64, 64, relu), Dense(64, 1), name="actor")
 critic = Chain(Dense(64, 64, relu), Dense(64, 1), name="critic")
 model = Chain(;
-    feat_extr = Dense(4, 64, relu),
-    actorCritic = Parallel(nothing;
+    feat_extr=Dense(4, 64, relu),
+    actorCritic=Parallel(nothing;
         actor,
         critic
     )
@@ -76,16 +76,16 @@ end
 
 function Lux.initialparameters(rng::AbstractRNG, policy::MyACPolicy)
     params = (:feature_extractor => Lux.initialparameters(rng, policy.feature_extractor),
-               :actor_head => Lux.initialparameters(rng, policy.actor_head),
-               :log_std_init => policy.log_std_init*ones(typeof(policy.log_std_init), policy.actor_head.out_dim),
-               :critic_head => Lux.initialparameters(rng, policy.critic_head))
+        :actor_head => Lux.initialparameters(rng, policy.actor_head),
+        :log_std_init => policy.log_std_init * ones(typeof(policy.log_std_init), policy.actor_head.out_dim),
+        :critic_head => Lux.initialparameters(rng, policy.critic_head))
     return params
 end
 
 function Lux.initialstates(rng::AbstractRNG, policy::MyACPolicy)
     states = (:feature_extractor => Lux.initialstates(rng, policy.feature_extractor),
-               :actor_head => Lux.initialstates(rng, policy.actor_head),
-               :critic_head => Lux.initialstates(rng, policy.critic_head))
+        :actor_head => Lux.initialstates(rng, policy.actor_head),
+        :critic_head => Lux.initialstates(rng, policy.critic_head))
     return states
 end
 
@@ -93,7 +93,7 @@ Lux.parameterlength(policy::MyACPolicy) = Lux.parameterlength(policy.feature_ext
 
 Lux.statelength(policy::MyACPolicy) = Lux.statelength(policy.feature_extractor) + Lux.statelength(policy.actor_head) + Lux.statelength(policy.critic_head)
 
-function MyACPolicy(in_dim, out_dim; log_std_init = 0.0f0)
+function MyACPolicy(in_dim, out_dim; log_std_init=0.0f0)
     return MyACPolicy(Chain(Dense(in_dim, 64, relu), Dense(64, 64, relu)), Dense(64, out_dim), Dense(64, 1), log_std_init)
 end
 
@@ -111,7 +111,7 @@ function predict(policy::MyACPolicy, x, ps, st)
 end
 
 function evaluate_actions(policy::MyACPolicy, x, actions, ps, st) end
-    
+
 
 policy = MyACPolicy(4, 1)
 ps, st = Lux.setup(MersenneTwister(1234), policy)
@@ -127,7 +127,7 @@ function get_entropy(means, stds)
     entropy.(distris)
 end
 get_entropy(means, stds)
-@benchmark get_entropy(means, stds) setup=(means = rand(Float32, 2, 3, 5), stds = rand(Float32, 2, 3, 5))
+@benchmark get_entropy(means, stds) setup = (means=rand(Float32, 2, 3, 5), stds=rand(Float32, 2, 3, 5))
 
 
 distris = MvNormal.(vec.(eachslice(means, dims=3)), vec.(eachslice(stds, dims=3)))
@@ -160,8 +160,8 @@ obs = rand(Float32, 3, 4)
 
 actions, st = DRiL.predict(pend_policy, obs, ps, st)
 
-means = rand(1,1)
-std = rand(1,1)
+means = rand(1, 1)
+std = rand(1, 1)
 Normal.(means, std)
 pend_policy.action_space.shape
 vec_actions = eachslice(means, dims=2)
@@ -172,7 +172,7 @@ Normal.(means, Ref(0.1))
 ## Testing functionality
 env = MultiThreadedParallelEnv([PendulumEnv(), PendulumEnv()])
 policy = ActorCriticPolicy(observation_space(env), action_space(env))
-agent = ActorCriticAgent(policy;verbose=2, n_steps =64)
+agent = ActorCriticAgent(policy; verbose=2, n_steps=64)
 ##
 
 n_steps = 64
@@ -181,24 +181,108 @@ fps = DRiL.collect_rollouts!(roll_buffer, agent, env)
 DRiL.reset!(roll_buffer)
 trajectories = DRiL.collect_trajectories(agent, env, n_steps)
 
-##
+## copmonentarray
+using ComponentArrays
+ca = ComponentArray(a=[1 2 3; 4 5 6], b=[7 8 9 10 11 12])
+ca[1:12]
+ca = ca ./ 12
+norm(ca)
+norm(1:12)
 
-learn!(agent, env, PPO(); max_steps=1000)
 
-##
+## does everything work?
 using DrWatson
 @quickactivate :project_2
 using Lux
 using DRiL
 using Zygote
+# using WGLMakie
+using CairoMakie
+using Statistics
+using LinearAlgebra
+using Pendulum
 ##
-env = MultiThreadedParallelEnv([PendulumEnv() |> ScalingWrapperEnv for _ in 1:16])
+env = MultiThreadedParallelEnv([PendulumEnv(; gravity=10f0, max_steps=500) |> ScalingWrapperEnv for _ in 1:16])
 policy = ActorCriticPolicy(observation_space(env), action_space(env))
-agent = ActorCriticAgent(policy;verbose=2, n_steps =64, learning_rate=3f-4,
-    log_dir = "logs/testing/testing_logs", batch_size=64)
-single_env = PendulumEnv() |> ScalingWrapperEnv
+agent = ActorCriticAgent(policy; verbose=2, n_steps=256, learning_rate=1f-3, epochs=10,
+    log_dir="logs/hyper_search/run", batch_size=64)
+alg = PPO(; ent_coef=0.01f0, vf_coef=0.5f0, gamma=0.9f0, gae_lambda=0.95f0)
+metrics = ["env/avg_ep_rew", "train/loss"]
+# hparams = merge(DRiL.get_hparams(alg), DRiL.get_hparams(agent))
+# DRiL.TensorBoardLogger.write_hparams!(agent.logger, hparams, metrics)
+# DRiL.TensorBoardLogger.write_hparams!(agent.logger, agent, metrics)
+# DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, metrics)
+DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, metrics)
+
+learn!(agent, env, alg; max_steps=300_000)
+## viz
+single_env = PendulumEnv(; gravity=10f0, max_steps=500) |> ScalingWrapperEnv
 observations, actions, rewards = collect_trajectory(agent, single_env)
+actions = first.(actions) .* 2
+plot_trajectory(PendulumEnv(), observations, actions, rewards)
+sum(rewards)
+animate_trajectory_video(PendulumEnv(), observations, actions, "test.mp4")
+##
+agent.train_state.parameters.log_std
+observations, actions, rewards = collect_trajectory(agent, single_env)
+WGLMakie.activate!()
+plot_trajectory_interactive(PendulumEnv(), observations, actions, rewards)
+CairoMakie.activate!()
 plot_trajectory(PendulumEnv(), observations, actions, rewards)
 
-learn!(agent, env, PPO(); max_steps=200_000)
+mock_obs = rand(Float32, 3, 100) .* 2f0 .- 1f0
+mock_actions = predict_actions(agent, mock_obs)
+hist(vec(mock_actions))
+mock_actions_det = predict_actions(agent, mock_obs; deterministic=true)
+hist(vec(mock_actions_det))
+mock_actions_mean = Statistics.mean(mock_actions, dims=2)
+mock_actions_std = Statistics.std(mock_actions, dims=2)
+agent.train_state.parameters.log_std
+
+mock_actions_det_mean = Statistics.mean(mock_actions_det, dims=2)
+mock_actions_det_std = Statistics.std(mock_actions_det, dims=2)
+
+mock_values = predict_values(agent, mock_obs)
+hist(vec(mock_values))
+##
+# Survey of actions and values across different velocities
+thetas = LinRange(-π, π, 100) .|> Float32
+velocities = LinRange(-1f0, 1f0, 23) # 9 different velocity values
+
+fig = Figure(size=(600, 800))
+ax_actions = Axis(fig[1, 1], xlabel="θ", ylabel="Actions", title="Actions vs Angle")
+ax_values = Axis(fig[2, 1], xlabel="θ", ylabel="Values", title="Values vs Angle")
+ax_rewards = Axis(fig[3, 1], xlabel="θ", ylabel="Rewards", title="Rewards vs Angle")
+
+# Remove custom function and use the one from pendulum.jl
+
+for (i, vel) in enumerate(velocities)
+    xs = cos.(thetas)'
+    ys = sin.(thetas)'
+    vels = fill(vel, 1, length(thetas))
+    mock_obs = vcat(xs, ys, vels)
+
+    mock_actions_det = predict_actions(agent, mock_obs; deterministic=true)
+    mock_values = predict_values(agent, mock_obs)
+
+    # Calculate rewards for each theta and velocity using pendulum_rewards from pendulum.jl
+    rewards = [sum(project_2.pendulum_rewards(theta, vel * 8.0f0, action * 2f0)) for (theta, action) in zip(thetas, vec(mock_actions_det))]
+
+    lines!(ax_actions, thetas, vec(mock_actions_det), color=vel, colorrange=(-1f0, 1f0),
+        label="v = $(round(vel, digits=1))")
+    lines!(ax_values, thetas, vec(mock_values), color=vel, colorrange=(-1f0, 1f0))
+    lines!(ax_rewards, thetas, rewards, color=vel, colorrange=(-1f0, 1f0))
+end
+
+# Add a colorbar to show velocity mapping
+colorbar = Colorbar(fig[1:3, 2], colormap=cgrad(:viridis), limits=extrema(velocities),
+    label="Velocity")
+
+fig
+
+
+
+
+
+
 
