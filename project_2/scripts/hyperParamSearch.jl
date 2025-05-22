@@ -85,6 +85,29 @@ function load_further_configs(n_experiments=256)
     return configs
 end
 
+function load_third_configs(n_experiments=256)
+    Random.seed!(experiment_seed)
+    gammas = rand((0.8f0) .. (0.99f0), n_experiments)
+    gae_lambdas = rand((0.9f0) .. (1.0f0), n_experiments)
+    vf_coefs = rand((0.3f0) .. (0.7f0), n_experiments)
+    learning_rates = 10 .^ (rand((-5f0) .. (-2f0), n_experiments))
+    batch_sizes = rand([32, 64, 128], n_experiments)
+    n_stepss = rand([128, 256, 512], n_experiments)
+    configs = Tuple{Dict{String,Any},String}[]
+    for i in 1:n_experiments
+        push!(configs, (Dict(
+                "gamma" => gammas[i],
+                "gae_lambda" => gae_lambdas[i],
+                "vf_coef" => vf_coefs[i],
+                "learning_rate" => learning_rates[i],
+                "batch_size" => batch_sizes[i],
+                "n_steps" => n_stepss[i],
+                "i" => i
+            ), "third"))
+    end
+    return configs
+end
+
 @everywhere function run_experiment(config)
     params, run = config
     folder = "hyper_search" * "_" * run
@@ -103,7 +126,7 @@ end
     Accessors.@reset agent.batch_size = params["batch_size"]
     Accessors.@reset agent.n_steps = params["n_steps"]
     Accessors.@reset agent.verbose = 0
-    metrics = ["env/avg_ep_rew", "train/loss"]
+    metrics = ["env/avg_step_rew", "train/loss"]
     # DRiL.TensorBoardLogger.write_hparams!(agent.logger, agent, metrics)
     # DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, metrics)
     DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, metrics)
@@ -115,12 +138,12 @@ end
             "agent" => agent,
             "alg" => alg)
     )
-    safesave(datadir(folder, name * ".jld2"), result)
+    # safesave(datadir(folder, name * ".jld2"), result)
     return result
 end
 
 ##
-configs = load_further_configs()
+configs = load_third_configs()
 
 function run_experiments(configs)
     n_experiments = length(configs)
