@@ -26,7 +26,7 @@ obs_space = observation_space(penv)
 act_space = action_space(penv)
 DRiL.reset!(penv, MersenneTwister(1234))
 get_info(penv)
-rewards, terminateds, truncateds, infos = DRiL.step!(penv, rand(act_space.type, act_space.shape..., 2))
+rewards, terminateds, truncateds, infos = DRiL.step!(penv, rand(act_space))
 
 ## DataLoader
 using MLUtils
@@ -202,19 +202,14 @@ using Statistics
 using LinearAlgebra
 using Pendulum
 ##
-env = MultiThreadedParallelEnv([PendulumEnv(; gravity=10f0, max_steps=500) |> ScalingWrapperEnv for _ in 1:16])
+env = MultiThreadedParallelEnv([PendulumEnv() |> ScalingWrapperEnv for _ in 1:16])
 policy = ActorCriticPolicy(observation_space(env), action_space(env))
 agent = ActorCriticAgent(policy; verbose=2, n_steps=256, learning_rate=1f-3, epochs=10,
     log_dir="logs/hyper_search/run", batch_size=64)
-alg = PPO(; ent_coef=0.01f0, vf_coef=0.5f0, gamma=0.9f0, gae_lambda=0.95f0)
-metrics = ["env/avg_ep_rew", "train/loss"]
-# hparams = merge(DRiL.get_hparams(alg), DRiL.get_hparams(agent))
-# DRiL.TensorBoardLogger.write_hparams!(agent.logger, hparams, metrics)
-# DRiL.TensorBoardLogger.write_hparams!(agent.logger, agent, metrics)
-# DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, metrics)
-DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, metrics)
+alg = PPO(; ent_coef=0.01f0, vf_coef=0.5f0, gamma=0.99f0, gae_lambda=0.9f0)
+DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, ["env/avg_step_rew", "train/loss"])
 
-learn!(agent, env, alg; max_steps=300_000)
+learn_stats = learn!(agent, env, alg; max_steps=300_000)
 ## viz
 single_env = PendulumEnv(; gravity=10f0, max_steps=500) |> ScalingWrapperEnv
 observations, actions, rewards = collect_trajectory(agent, single_env)
