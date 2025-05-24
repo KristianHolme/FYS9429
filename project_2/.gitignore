@@ -5,3 +5,5 @@ logs/
 data/
 *.jld2
 *.mp4
+pyenv/
+plots/
