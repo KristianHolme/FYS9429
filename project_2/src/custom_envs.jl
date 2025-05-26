@@ -100,9 +100,3 @@ function DRiL.act!(env::GoalReachingEnv, action::Float32)
     
     return reward
 end
-
-function DRiL.step!(env::GoalReachingEnv, action::AbstractArray)
-    reward = DRiL.act!(env, action)
-    next_obs = DRiL.observe(env)
-    return next_obs, reward, env._terminated, env._truncated, env._info
-end
