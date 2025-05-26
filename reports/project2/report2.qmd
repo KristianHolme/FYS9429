@@ -1,0 +1,166 @@
+---
+title: "Towards fast and flexible deep reinforcement learning in Julia"
+author: "Kristian Holme"
+date: today
+format: 
+    html:
+        embed-resources: false
+editor: 
+    render-on-save: true
+csl: ieee.csl
+---
+
+## Abstract
+
+Deep Reinforcement Learning (DRL) is a powerful optimization tool for control tasks, with applications ranging from robotics to active flow control. As part of my PhD research in DRL for flow control, I aim to deepen my understanding of DRL algorithms while laying the groundwork for a fully-featured DRL package in Julia. This project implements a prototype DRL library focusing on the Proximal Policy Optimization (PPO) algorithm. Due to time constraints, the current implementation is limited in scope but successfully demonstrates learning on the classical Pendulum environment. The prototype includes support for vectorized environments, proper implementation of key algorithmic details, and flexible neural network architectures. This work represents the initial foundation for continued development of a comprehensive DRL package in Julia.
+
+## Introduction
+- RL intro
+    - environments
+    - agents
+    - algorithms
+    classical: tabular learning
+    modern: deep learning
+
+Reinforcement Learning (RL) is a machine learning paradigm where an agent learns to make decisions by interacting with an environment to maximize cumulative rewards. At its core, RL involves three fundamental components: environments that define the problem space and dynamics, agents that learn and make decisions, and algorithms that guide the learning process.
+
+In classical reinforcement learning, problems were typically solved using tabular methods where the state and action spaces were discrete and small enough to be represented in lookup tables. Algorithms like Q-learning and SARSA could store explicit value estimates for each state-action pair, making optimal policies tractable for simple environments like grid worlds or small Markov Decision Processes.
+
+However, as RL expanded to tackle real-world problems with high-dimensional observation spaces—such as raw pixel inputs from images or continuous sensor readings—classical tabular approaches became computationally infeasible. This limitation gave rise to modern Deep Reinforcement Learning (DRL), which leverages neural networks as function approximators to handle complex, high-dimensional inputs.
+
+In DRL, observations from the environment are passed through neural networks to produce actions, enabling agents to operate in previously intractable domains. This approach combines the decision-making framework of reinforcement learning with the representational power of deep learning, allowing for end-to-end learning from raw sensory input to actions. While this brings tremendous capabilities, it also introduces new challenges including sample efficiency, stability, and reproducibility that continue to be active areas of research. 
+
+
+
+- the two-language problem: high-level dynamic scripting and testing vs. low level fast implementation
+- julia is a good language for DRL, especially for the control tasks I am interested in: controlling fluid. Tuning an RL env often requires rapid iteration and experimentation, the optimization using neural networks is resiource intensive, and fluid simulations are resource intensive. Julia is a single language that can accomplish all of this. 
+- Currently, to my knowledge, no feature rich DRL library in julia. 
+    - Reinforcementlearning.jl: abandoned mid refactor
+    - POMDPs.jl: more mature than ^^ but not a DRL package, only slight support for DQN.
+    - Crux.jl: A good DRL package. Seems to support a kind of vectorized environment, with its vector of samplers. However seems to lack support for some implementation details, like normalising advantages and having shared parameters for the actor and critic networks for example.
+    - DeepRL.jl: Limited package with only one algorithm, DQN
+- Second motivation: to learn more deeply about DRL, and specifically about PPO.
+- Goal: prototype implementation of PPO, with support for vectorized environments, many important implementation details and custom networks, including the possibility for using shared parameters between networks.
+
+
+## Deep Reinforcement Learning
+- agent-environment interaction
+- neural network for determining action from observation
+- policy gradient methods
+    - policy gradient theorem
+    - REINFORCE
+- improvements by using a critic network
+    judges the value (future rewards) of the current state
+- earlier actor critic methods
+- PPO
+    - loss function
+    - GAE: Generalized Advantage Estimation
+- Complex networks
+    - parameter sharing
+        - feature extractors and actor/critic heads
+        - cnns
+
+## Implementation
+
+### Environments
+- Interface
+    - CommonRLInterface deviates from standard gym interface, but is more flexible
+    - extend CommonRLInterface with truncation
+    - use the step interface from gym for parallell environments
+        - auto resetting, info for bootstrapping and so on
+- Multithreaded parallel environments
+    - could expand to distributed environments on several processes
+
+### Spaces
+- Many fundamental spaces
+- Most important for continuous task are Box. 
+- A simplified version of the Box space is implemented, UniformBox.
+
+### Neural Networks
+- Using the Lux.jl package
+    - pure julia implementation
+    - explicitly parameterised
+    - custom wight initialization using WeightInitializers.jl, part of Lux
+    - support for multiple Automatic Differentiation backends
+    - suport for acceleration on GPU and even TPU using Reactant.jl
+        - compiles to MLIR and XLA
+- Custom networks
+- a single loss functions for the combined parameters
+    - not separate training of actor and critic, as in Crux.jl
+- Policy Interface
+    - predict
+    - get logprobs and entropy
+    - ...
+### Agents
+- manages the policy, the parameters, optimizer, and logging
+- Using TensorBoardLogger.jl to track performance stats
+    - useful during development of the package and during development of environments
+
+### PPO implementation
+- Reference to 37 implemetnation details blog post
+    - ref studies
+- bootstrapping of values
+    - terminated vs truncated
+- normalizing advantages
+- entropy loss
+- 
+#### Implementation details:
+    1. Vectorized environments: yes
+    2. Orthogonal weight init and constant bias: yes
+    3. Adam Optimizer bias: 1f-5, following OpenAI original implementation
+        likely not significant
+    4. Learning rate annealing: no
+        - does not seem to be necessary for Pendulum
+    5. GAE: yes, using bootstrapping for truncated episodes (unlike original PPO)
+    6. Mini-batch update: yes (dividing each rolloutbuffer in mini-batches)
+    7. Advantage normalization: yes
+    8. Clipped PPO objective: yes
+    9. Value function clipping: no, papers indicate it uncessary or bad
+    10. Overall loss: yes, including entropy loss
+    11. Global gradient clipping: yes, using the PPO paper's recommended value of 0.5
+    12. Shared or separate networks: support for both, currently default to separate (default for continuous tasks)
+From the Continuous action space details:
+    1. Normal distributions: yes. The policy network outputs the mean of the distribution. 
+    2. State-independant std: yes, using a learnable parameter for each action dimension
+    3. Independant action components: not applicable, as we havent yet implemented support for more than one action dimension
+    4. separate networks: yes, as default for continuous tasks
+    5. action clipping: yes, clipping action to action space before sending to the environment, but storing the original action in the rollout buffer
+    6.-9. Normalization and scaling of observations and rewards: no. Does not seem necessary for Pendulum
+## Results
+..
+### The Pendulum environment
+    - Part of the Classical control suite of environments
+        -ref gymnasium
+    - a pendulum swinging in a plane
+    - theta between -pi and pi
+    - observe (x, y, v)
+        - observation space: x, y [-1,1], v [-8,8], normalized to [-1,1]
+    - action: apply torque
+        - action space: [-2, 2]
+    - reward: -theta^2 - 0.1*v^2 - 0.001*torque^2
+    - time step: 0.05
+    - episode length: 200
+    - show image
+
+### Hyperparameter search for Pendulum
+    - Find the best hyperparameters for our PPO implementation
+    - Utilize the multithreading capavilities of julia to run experiments in parallel
+        - combined with parallel environments, we can easily run 100s of environments simultaneously on a single machine (but very light weight env so not that cool)
+    - sample from a grid of hyperparameters
+    - train an agent with each set of hyperparameters, 5 runs with different seeds
+        - DRL results can vary alot with different seeds, so we need to run multiple times to make sure we are not just lucky
+    - evaluate by the average return over multiple samples episodes
+    - plot of hyper search
+    - show best hyperparameters
+    - show training stats of a multiple runs with best hyperparameters
+## Conclusion
+- Successfully implemented PPO in julia, with parallell environments and support for custom neural networks. Sucessfull learning of the Pendulum environment.
+- Lots to do before fully fledged:
+    - Support more spaces
+    - Implement more algorithms
+        - SAC, DQN etc, both off-policy and on-policy
+        - maybe even model-based?
+    Add environements wrappers for normalization, and logging
+    - performance optimization
+    - Ensure copmatibility with more AD backends, most importantly Enzyme + reactant for GPU and TPU
+    -formulate a rendering interface, working with Makie.jl
