@@ -30,16 +30,16 @@ end
 
 function sample_hyperparams(rng::AbstractRNG)
     return Dict(
-        "gamma" => rand(0.9f0 .. 0.999f0),  # 0.85-0.99
-        "gae_lambda" => rand(0.95f0 .. 0.95f0),  # 0.9-1.0
-        "clip_range" => rand(0.2f0 .. 0.2f0),  # 0.1-0.3
+        "gamma" => rand(0.92f0 .. 0.999f0),  # 0.85-0.99
+        "gae_lambda" => rand(0.8f0 .. 0.98f0),  # 0.9-1.0
+        "clip_range" => rand(0.1f0 .. 0.3f0),  # 0.1-0.3
         "vf_coef" => rand(0.5f0 .. 0.5f0),  # 0.1-1.0
-        "ent_coef" => rand(0f0 .. 0.001f0),  # 0.0-0.01
-        "learning_rate" => 10^(rand(rng, -3.0f0 .. -1.0f0)),  # 1e-5 to 1e-2
-        "batch_size" => rand(rng, [32, 64]),
-        "n_steps" => rand(rng, [64, 128, 256, 512, 1024]),
-        "epochs" => rand(rng, [5, 10, 15, 20, 25]),
-        "n_envs" => rand(rng, [4, 8, 16, 32])
+        "ent_coef" => rand(0.0005f0 .. 0.0005f0),  # 0.0-0.01
+        "learning_rate" => 10^(rand(rng, -5.0f0 .. -2.0f0)),  # 1e-5 to 1e-2
+        "batch_size" => rand(rng, [64, 128]),
+        "n_steps" => rand(rng, [128, 256, 512]),
+        "epochs" => rand(rng, [10, 20]),
+        "n_envs" => rand(rng, [4, 8, 16])
     )
 end
 
@@ -74,7 +74,7 @@ function run_single_trial(params::Dict, experiment_name::String)
         epochs = params["epochs"],
         verbose = 0,
         rng = Xoshiro(params["seed"]),
-        log_dir = datadir("experiments", experiment_name, "trial_$(params["trial_id"])_seed_$(params["seed_idx"])")
+        log_dir = datadir("experiments", experiment_name, "logs","trial_$(params["trial_id"])_seed_$(params["seed_idx"])")
     )
     
     # Create algorithm
@@ -122,10 +122,10 @@ function run_hyperparameter_search(config::SearchConfig = SearchConfig())
             seed_params["seed_idx"] = seed_idx
             
             # Use DrWatson's produce_or_load
-            filename = savename("trial_$(trial)_seed_$(seed_idx)", seed_params, "jld2")
+            filename = "trial_$(trial)_seed_$(seed_idx)"
             result = produce_or_load(
                 seed_params,
-                datadir("experiments", config.experiment_name);
+                datadir("experiments", config.experiment_name, "results");
                 filename) do params
                     return run_single_trial(params, config.experiment_name)
                 end
@@ -141,7 +141,7 @@ end
 
 function analyze_results(experiment_name::String)
     # Collect all results
-    df = collect_results(datadir("experiments", experiment_name))
+    df = collect_results(datadir("experiments", experiment_name, "results"))
     
     # Group by trial_id and aggregate across seeds
     grouped_df = combine(groupby(df, :trial_id)) do group
@@ -223,5 +223,5 @@ end
 # =============================================================================
 
 # Quick test: df, best_config = main(n_trials=5, max_steps_per_trial=5_000)
-# Full search: df, best_config = main(n_trials=256, max_steps_per_trial=100_000)
+# Full search: df, best_config = main(n_trials=128, max_steps_per_trial=100_000)
 # Get best params: get_best_hyperparams("your_experiment_name")
