@@ -8,6 +8,8 @@ format:
 editor: 
     render-on-save: true
 csl: ieee.csl
+filters:
+  - pseudocode
 ---
 
 ## Abstract
@@ -24,23 +26,35 @@ Deep Reinforcement Learning (DRL) is a powerful optimization tool for control ta
 
 Reinforcement Learning (RL) is a machine learning paradigm where an agent learns to make decisions by interacting with an environment to maximize cumulative rewards. At its core, RL involves three fundamental components: environments that define the problem space and dynamics, agents that learn and make decisions, and algorithms that guide the learning process.
 
+Reinforcement learning environments can range from simple abstract problems to complex real-world systems. The classic Grid-World environment, where an agent navigates a discrete grid to collect rewards, serves as a fundamental testbed for developing and understanding RL algorithms. While simple, it captures the essential elements of sequential decision-making and reward maximization.
+
+More complex environments include robotic control tasks, where agents learn to manipulate physical systems either in simulation or through real-world sensors and actuators [@robotics_citation]. An emerging area of research applies RL to fluid dynamics, where the goal might be to minimize drag [@drag_citation] or control circulation patterns in Rayleigh-Bénard convection [@rayleigh_benard_citation].
+
 In classical reinforcement learning, problems were typically solved using tabular methods where the state and action spaces were discrete and small enough to be represented in lookup tables. Algorithms like Q-learning and SARSA could store explicit value estimates for each state-action pair, making optimal policies tractable for simple environments like grid worlds or small Markov Decision Processes.
 
 However, as RL expanded to tackle real-world problems with high-dimensional observation spaces—such as raw pixel inputs from images or continuous sensor readings—classical tabular approaches became computationally infeasible. This limitation gave rise to modern Deep Reinforcement Learning (DRL), which leverages neural networks as function approximators to handle complex, high-dimensional inputs.
 
-In DRL, observations from the environment are passed through neural networks to produce actions, enabling agents to operate in previously intractable domains. This approach combines the decision-making framework of reinforcement learning with the representational power of deep learning, allowing for end-to-end learning from raw sensory input to actions. While this brings tremendous capabilities, it also introduces new challenges including sample efficiency, stability, and reproducibility that continue to be active areas of research. 
+In DRL, observations from the environment are passed through neural networks to produce actions, enabling agents to operate in previously intractable domains. This approach combines the decision-making framework of reinforcement learning with the representational power of deep learning, allowing for end-to-end learning from raw sensory input to actions. Modern DRL algorithms include Deep Q-Networks (DQN) for discrete action spaces, Proximal Policy Optimization (PPO) for both discrete and continuous control, and Soft Actor-Critic (SAC) for continuous control tasks. While this brings tremendous capabilities, it also introduces new challenges including sample efficiency, stability, and reproducibility that continue to be active areas of research. 
 
 
-
-- the two-language problem: high-level dynamic scripting and testing vs. low level fast implementation
-- julia is a good language for DRL, especially for the control tasks I am interested in: controlling fluid. Tuning an RL env often requires rapid iteration and experimentation, the optimization using neural networks is resiource intensive, and fluid simulations are resource intensive. Julia is a single language that can accomplish all of this. 
-- Currently, to my knowledge, no feature rich DRL library in julia. 
+%%
+-the two-language problem: high-level dynamic scripting and testing vs. low level fast implementation
+-julia is a good language for DRL, especially for the control tasks I am interested in: controlling fluid simulations. Tuning an RL env often requires rapid iteration and experimentation, the optimization using neural networks is resiource intensive, and fluid simulations are resource intensive. Julia is a single language that can accomplish all of this. 
+-Currently, to my knowledge, no feature rich DRL library in julia. 
     - Reinforcementlearning.jl: abandoned mid refactor
     - POMDPs.jl: more mature than ^^ but not a DRL package, only slight support for DQN.
     - Crux.jl: A good DRL package. Seems to support a kind of vectorized environment, with its vector of samplers. However seems to lack support for some implementation details, like normalising advantages and having shared parameters for the actor and critic networks for example.
     - DeepRL.jl: Limited package with only one algorithm, DQN
 - Second motivation: to learn more deeply about DRL, and specifically about PPO.
 - Goal: prototype implementation of PPO, with support for vectorized environments, many important implementation details and custom networks, including the possibility for using shared parameters between networks.
+%%
+A significant challenge in scientific computing is the two-language problem, where researchers must choose between high-level dynamic languages for rapid prototyping and experimentation versus low-level compiled languages for performance-critical implementations. Julia addresses this challenge by combining the ease of high-level scripting with the performance of compiled languages, making it particularly well-suited for deep reinforcement learning applications.
+
+For the specific control tasks I am interested in—controlling fluid simulations—Julia offers unique advantages. Developing and tuning RL environments requires rapid iteration and experimentation, while the optimization of neural networks and fluid simulations are both computationally intensive. Julia provides a unified language that can handle all these requirements efficiently, from high-level algorithm development to performance-critical numerical computations.
+
+Despite Julia's suitability for DRL, the ecosystem currently lacks a comprehensive, feature-rich DRL library. Existing packages have significant limitations: Reinforcementlearning.jl was abandoned during a refactor, POMDPs.jl focuses on classical methods with only minimal DQN support, Crux.jl provides good functionality but lacks important implementation details like advantage normalization and shared network parameters, and DeepRL.jl offers only a single DQN algorithm.
+
+Beyond addressing this gap in the Julia ecosystem, this project serves a second motivation: to deepen the author's understanding of DRL algorithms, particularly Proximal Policy Optimization (PPO). The goal is to create a prototype implementation of PPO that includes support for vectorized environments, incorporates many important implementation details often overlooked in other libraries, and provides flexibility for custom neural network architectures, including the possibility of shared parameters between actor and critic networks.
 
 
 ## Deep Reinforcement Learning
@@ -48,111 +62,453 @@ In DRL, observations from the environment are passed through neural networks to 
 - neural network for determining action from observation
 - policy gradient methods
     - policy gradient theorem
-    - REINFORCE
-- improvements by using a critic network
-    judges the value (future rewards) of the current state
-- earlier actor critic methods
-- PPO
-    - loss function
-    - GAE: Generalized Advantage Estimation
-- Complex networks
-    - parameter sharing
-        - feature extractors and actor/critic heads
-        - cnns
+%%
+The core of deep reinforcement learning lies in the iterative agent-environment interaction loop. At each time step, the agent receives an observation,often called the state, from the environment, processes this observation through a neural network to determine an action, executes that action in the environment, and receives a reward signal along with the next observation. This cycle continues until the environment reaches a terminal state - could be failed or sucessfully finished- or reaches a time limit. The agent's goal being to maximize the cumulative reward over time.
+
+
+### Policy gradient methods
+The neural network that maps observations to actions is called a policy network. The design of this network depends critically on the type of action space:
+
+**Discrete Action Spaces**: For environments with a finite set of discrete actions (e.g., move left, right, up, down), the policy network outputs logits (unnormalised probabilities) or probabilities for each possible action. The network typically has as many output neurons as there are actions, and a softmax activation function converts the logits into a valid probability distribution. The agent then samples an action according to these probabilities.
+
+**Continuous Action Spaces**: For environments requiring continuous control (e.g., torque values, steering angles), the policy network outputs parameters of a continuous probability distribution, most commonly a Gaussian distribution. There are several approaches for parameterizing the noise:
+
+1. **State-dependent noise**: The policy network outputs both the mean and standard deviation of the Gaussian distribution. This allows the exploration noise to adapt based on the current state, potentially leading to more intelligent exploration strategies.
+
+2. **State-independent noise**: The policy network outputs only the mean of the distribution, while the standard deviation is maintained as a separate learnable parameter (or set of parameters for multi-dimensional action spaces) that is independent of the state. This approach is simpler and often more stable, especially early in training.
+
+3. **Separate noise network**: Some implementations use a separate neural network to predict the standard deviation, allowing for more complex state-dependent noise patterns while maintaining architectural flexibility.
+
+The choice between these approaches affects both the exploration behavior and the complexity of the policy optimization. State-independent noise is often preferred for its simplicity and stability, while state-dependent approaches can potentially achieve more sophisticated exploration strategies. Herein we use continuous action spaces, and use state-independent noise.
+
+Policy gradient methods form a fundamental class of algorithms for training these policy networks. Rather than learning value functions (learning the expected future reward given a state) and deriving policies from them, policy gradient methods directly optimize the policy parameters to maximize expected returns. The theoretical foundation for this approach is the policy gradient theorem, which provides an unbiased estimator for the gradient of the expected return with respect to the policy parameters. This theorem shows that the gradient can be estimated using samples from the current policy, making it practical to optimize policies through gradient ascent on collected experience.
+
+Let $\pi_\theta$ denote the policy network parameterized by $\theta$. By a trajectory we mean a sequence of tuples of state, action and reward, ${(s_i, a_i, r_i)}_{i=0}^T$ starting from state $s_0$, until the environment reaches a terminal state at time $T$. The total return from a trajectory is  $R(\tau) = \sum_{t=0}^T r(s_t, a_t)$ where $T$ is the length of the trajecotory. By tuning the parameters of the policy network, we want to maximise the expected return over all possible trajectories:
+
+$$
+J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} [R(\tau)]
+$$
+
+We rewrite the expected return as a sum over all trajectories:
+$$
+J(\theta) = \sum_{\tau \sim \pi_\theta} P(\tau | \theta) R(\tau),
+$$
+where $P(\tau | \theta)$ is the probability of a trajectory $\tau$ under the policy $\pi_\theta$.
+We then take the gradient (with respect to the parameters $\theta$):
+$$
+\nabla J(\theta) = \sum_{\tau \sim \pi_\theta} \nabla P(\tau | \theta) R(\tau)
+$$
+
+Using the fact that $\nabla \log P(\tau | \theta) = \nabla P(\tau | \theta) / P(\tau | \theta)$, we can rewrite the gradient as:
+$$
+\nabla J(\theta) = \sum_{\tau \sim \pi_\theta} P(\tau | \theta) \nabla \log P(\tau | \theta) R(\tau)
+$$
+
+This can be rewritten as the expectation of the last two factors:
+$$
+\nabla J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} [\nabla \log P(\tau | \theta) R(\tau)]
+$$ {#eq-grad-j-P}
+
+Now we need to expand $P(\tau | \theta)$ in the expectation. We can do this by using the law of total probability:
+$$
+P(\tau | \theta) = P(s_0) \prod_{t=0}^{T} P(s_{t+1} | s_t, a_t) \pi_\theta(a_t | s_t)
+$$
+If take the logarithm of both sides, we get:
+$$
+\log P(\tau | \theta) = \log P(s_0) + \sum_{t=0}^{T} \log P(s_{t+1} | s_t, a_t) + \sum_{t=0}^{T} \log \pi_\theta(a_t | s_t)
+$$
+Only the last sum contains terms involving the policy parameters $\theta$. Thus we can write:
+$$
+\nabla \log P(\tau | \theta) = \nabla \sum_{t=0}^{T} \log \pi_\theta(a_t | s_t).
+$$
+
+Inserting this into @eq-grad-j-P, we obtain
+
+$$
+\nabla J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[\nabla \sum_{t=0}^{T}\log \pi_\theta(a_t | s_t) R(\tau)\right]
+$${#eq-policy-gradient}
+
+This equation is very useful, especially as it does not depend on any environment dynamics, only the policy and the reward signals.
+Using the notation $G_t = \sum_{t'=t}^T r_{t'}$, and using a few statistical tricks,we can rewrite the policy gradient as:
+$$
+\nabla J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[\nabla \sum_{t=0}^{T}\log \pi_\theta(a_t | s_t) G_t\right]
+$${#eq-policy-gradient-2}
+This is the basis for policy gradient methods, and by estimating the expected value we can estimate the gradient $\nabla J(\theta)$, which we can use to update the policy parameters. Several different policy gradient methods differ in how they estimate the gradient. We will focus on the PPO algorithm, widely regarded as one of the most effective and stable policy gradient methods.
+
+First we introduce the notion of a baseline. A baseline is a function $b(s_t)$ that is used to reduce the variance of the gradient estimate. As long as the baseline is not correlated with the action, it will not affect the gradient estimate, and we can insert it into the policy gradient equation:
+$$
+\nabla J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[\nabla \sum_{t=0}^{T}\log \pi_\theta(a_t | s_t) (G_t - b(s_t))\right]
+$${#eq-policy-gradient-3}
+
+A common baseline function is the state-value function $V_\theta(s_t) = \mathbb{E}_{\tau \sim \pi_\theta} [G_t | s_t]$. By subtracting this from the return, we can reduce the variance of the gradient estimate. The resulting term $G_t - V_\theta(s_t)$ is called the advantage function, and is denoted $A_t$. This leads to, following the notation of the original PPO paper @CITE_PPO, to an estimated gradient at time step t:
+$$
+g_t = \hat{\mathbb{E}}_{t} \left[\nabla \log \pi_\theta(a_t | s_t) \hat{A}_t\right],
+$${#eq-gradient-estimator}
+where $\hat{\mathbb{E}}$ is an average over a batch of trajectories, and $\hat{A}_t$ is an estimate of the advantage function.
+When using Automatic differentiation to compute the policy updates we need to have an objective function, for which the gradient is equal to the gradient estimator in @eq-gradient-estimator:
+
+$$
+L^{PG}(\theta) = \hat{\mathbb{E}}_{t} \left[\log \pi_\theta(a_t | s_t) A_t\right]
+$${#eq-pg-obj}
+
+### Proximal Policy Optimization (PPO)
+In the PPO algorithm, a modified objective function is used. Let $r_t(\theta)$ be the ratio of the updated policy to the old policy (before applying batched updated), that is $r_t(\theta) = \frac{\pi_\theta(a_t | s_t)}{\pi_{\theta_{old}}(a_t | s_t)}$.
+The PPO objective function is then:
+$$
+L^{PPO}(\theta) = \hat{\mathbb{E}}_{t} \left[\min(r_t(\theta) \hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) \hat{A}_t)\right],
+$${#eq-ppo-obj}
+where $\epsilon$ is a hyperparameter that controls the clipping (typically $\epsilon = 0.2$). 
+If the action is good, i.e. the advantage is positive, we want to increase the probability of taking that action. If the action is bad, i.e. the advantage is negative, we want to decrease the probability of taking that action. 
+This is achieved by the term $r_t \hat{A}_t$ when we maximize the objective function. Taking the minimim of this term and the clipped term, we ensure that the policy update is not too large. Note that when implementing this function, we multiply by a minus sign, to be consistent with optimisers that minimize.
+
+### Generalized Advantage Estimation (GAE)
+An important part of the PPO algorithm is the use of Generalized Advantage Estimation (GAE) to estimate the advantage function. The advantage function $A_t = G_t - V(s_t)$ measures how much better an action is compared to the average value of being in that state. However, directly computing $G_t$ requires waiting until the end of an episode, which can be inefficient and lead to high variance estimates.
+
+To implement advantage estimation, we need a way to estimate the value function $V(s_t)$. This is typically done using a separate neural network called the critic or value network, which learns to predict the expected future return from any given state. In actor-critic methods like PPO, this critic network is trained alongside the policy network (the actor) to provide value estimates needed for advantage computation.
+
+GAE addresses the bias-variance trade-off by providing a family of advantage estimators that use different time horizons. The key insight is that we can estimate advantages using temporal difference (TD) errors. Define the TD error as $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$. A one-step advantage estimate is simply $\hat{A}_t^{(1)} = \delta_t$, which has low variance but may be biased if the value function is inaccurate. Alternatively, we could use the full return $G_t$, which is unbiased but has high variance.
+
+GAE interpolates between these extremes using an exponentially-weighted average of n-step advantage estimates:
+
+$$\hat{A}_t^{GAE(\gamma,\lambda)} = \sum_{l=0}^{\infty} (\gamma \lambda)^l \delta_{t+l}$$
+
+where $\lambda \in [0,1]$ is the GAE parameter that controls the trade-off. When $\lambda = 0$, GAE reduces to the one-step estimate $\hat{A}_t^{GAE} = \delta_t$ with low variance but potential bias. When $\lambda = 1$, it approaches using the full return with high variance but no bias.
+
+In practice, we cannot sum to infinity, so we use bootstrapping to truncate the sum at a finite horizon. Bootstrapping means using the value function estimate to approximate the remaining future returns. When an episode terminates naturally, we set the final value to zero. However, when we reach a predetermined time limit or the end of our collected trajectory, we "bootstrap" by using the value function estimate $V(s_T)$ to approximate the value of continuing from that state. This allows us to compute GAE over finite trajectories:
+
+$$\hat{A}_t^{GAE(\gamma,\lambda)} = \sum_{l=0}^{T-t-1} (\gamma \lambda)^l \delta_{t+l} + (\gamma \lambda)^{T-t} V(s_T)$$
+
+where $T$ is either the natural episode termination or our chosen truncation point. The formula can be computed recursively as:
+
+$$\hat{A}_t^{GAE(\gamma,\lambda)} = \delta_t + \gamma \lambda \hat{A}_{t+1}^{GAE(\gamma,\lambda)}$$
+
+with the boundary condition that $\hat{A}_T^{GAE} = 0$ for naturally terminated episodes, or $\hat{A}_T^{GAE} = V(s_T)$ for truncated episodes. In practice, intermediate values like $\lambda = 0.95$ provide a good balance, allowing the algorithm to learn more efficiently by reducing variance while maintaining reasonable bias levels.
+
+### Entropy, total objective function and the final algorithm
+
+Since PPO uses both a policy network (actor) and a value network (critic), we need to optimize the parameters of both networks. The value network is trained to minimize the mean squared error between its predictions and the actual returns or GAE targets:
+
+$$L^{VF}(\theta) = -\hat{\mathbb{E}}_{t} \left[(V_\theta(s_t) - \hat{R}_t)^2\right]$$
+
+where $\theta$ are the network parameters and $\hat{R}_t$ is the GAE-estimated return. Specifically, the target return is computed as:
+
+$$\hat{R}_t = \hat{A}_t^{GAE(\gamma,\lambda)} + V_{\theta_{old}}(s_t)$$
+
+This means we use the GAE advantage estimate plus the value estimate from the previous iteration (before the current update) to create the target for training the value network. Note that $V_{\theta_{old}}(s_t)$ represents the value function from the previous parameters, while $V_\theta(s_t)$ in the loss function represents the current value function being optimized.
+Additionally, to encourage exploration and prevent the policy from becoming too deterministic too early in training, an entropy bonus is often added to the objective function. Entropy measures the randomness or uncertainty in the policy's action distribution. For a continuous action space with a Gaussian policy, the entropy is:
+
+$$H(\pi_\theta(s_t)) = \frac{1}{2} \log(2\pi e \sigma^2)$$
+
+where $\sigma$ is the standard deviation of the action distribution. Higher entropy means the policy is more exploratory (more random), while lower entropy means the policy is more deterministic. By adding an entropy bonus to the objective, we encourage the agent to maintain some level of exploration throughout training.
+
+The complete PPO objective function combines all three terms:
+
+$$L^{TOTAL}(\theta) = -L^{Clip}(\theta) - c_1 L^{VF}(\theta) - c_2 H(\pi_\theta)$$
+
+where $c_1$ and $c_2$ control the relative importance of the value function loss and entropy bonus, respectively. Typical values are $c_1 = 0.5$ and $c_2 \in (0.0, 0.01)$. This combined objective allows us to train both the policy and value networks simultaneously using gradient-based optimization, while maintaining appropriate exploration behavior.
+
+```pseudocode
+#| html-indent-size: "1.2em"
+#| html-comment-delimiter: "//"
+#| html-line-number: true
+#| html-line-number-punc: ":"
+#| html-no-end: false
+#| pdf-placement: "htb!"
+#| pdf-line-number: true
+
+\begin{algorithm}
+\caption{Proximal Policy Optimization (PPO)}
+\begin{algorithmic}
+\Procedure{PPO}{$\pi_\theta, V_\theta, \text{environments}$}
+  \State Initialize policy network $\pi_\theta$ and value network $V_\theta$
+  \For{$\text{iteration} = 1$ \To $N_{\text{iterations}}$}
+    \State $\pi_{\theta_{\text{old}}} \leftarrow \pi_\theta$, $V_{\theta_{\text{old}}} \leftarrow V_\theta$ \Comment{Store current networks}
+    \State Initialize rollout buffer $\mathcal{B} = \emptyset$
+    \For{$\text{env} = 1$ \To $N_{\text{envs}}$}
+      \State Collect trajectory $\tau = \{(s_t, a_t, r_t)\}_{t=0}^{T}$ using $\pi_{\theta_{\text{old}}}$
+      \State Add $\tau$ to rollout buffer $\mathcal{B}$
+    \EndFor
+    \State Compute GAE advantages $\hat{A}_t$ for all transitions in $\mathcal{B}$ using $V_{\theta_{\text{old}}}$
+    \State Compute returns $\hat{R}_t = \hat{A}_t + V_{\theta_{\text{old}}}(s_t)$ for all transitions
+    \For{$\text{epoch} = 1$ \To $N_{\text{epochs}}$}
+      \For{$\text{batch} = 1$ \To $N_{\text{mini-batches}}$}
+        \State Sample mini-batch $\mathcal{M}$ from rollout buffer $\mathcal{B}$
+        \State Compute policy ratio $r_t = \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)}$
+        \State Compute clipped objective $L^{\text{Clip}}(\theta) = \min(r_t \hat{A}_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon) \hat{A}_t)$
+        \State Compute value loss $L^{\text{VF}}(\theta) = (V_\theta(s_t) - \hat{R}_t)^2$
+        \State Compute entropy bonus $H(\pi_\theta)$
+        \State Compute total loss $L^{\text{Total}} = -L^{\text{Clip}} - c_1 L^{\text{VF}} + c_2 H$
+        \State Update $\theta$ with the chosen optimizer using the gradient of $L^{\text{Total}}$
+      \EndFor
+    \EndFor
+  \EndFor
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+```
+
+### Network architectures
+The choice of neural network architecture in deep reinforcement learning depends heavily on the nature of the observation space and the specific requirements of the task. Different observation types call for different architectural approaches to effectively extract relevant features and make good decisions.
+
+**Image-based Observations**: When dealing with visual inputs such as camera feeds or rendered game screens, convolutional neural networks (CNNs) are typically employed for feature extraction. The CNN layers process the raw pixel data to extract spatial features, which are then fed into fully connected layers that form the policy and value network heads. This approach has proven highly effective in domains like Atari games and robotic vision tasks.
+
+**Low-dimensional Continuous Observations**: For environments with relatively simple observation spaces (such as joint angles, velocities, or sensor readings), fully connected networks are often sufficient. These networks can efficiently process the structured numerical data without the spatial inductive biases of CNNs. The output architecture depends on the action space: for continuous control, the policy network outputs the mean of the action distribution, while the value network outputs a single scalar representing the state value.
+
+**Sequential Dependencies**: Some environments require memory of past observations to make optimal decisions. In such cases, recurrent neural networks (RNNs) or Long Short-Term Memory (LSTM) networks can be incorporated to maintain temporal context. This is particularly important in partially observable environments where the current observation alone is insufficient for decision-making.
+
+**Shared vs. Separate Networks**: A key architectural decision is whether to use shared parameters between the policy and value networks. Shared networks use a common feature extraction backbone with separate heads for policy and value outputs, which can improve sample efficiency by sharing learned representations. Alternatively, completely separate networks provide more flexibility but require more parameters and potentially more training data.
+
+A major goal of our implementation is to support arbitrary network architectures, allowing researchers to experiment with custom designs tailored to their specific domains.
 
 ## Implementation
 
+The implementation of our prototype DRL library follows a modular design philosophy that separates concerns into four main components: environments, policies, agents, and algorithms. This separation allows for flexible composition and easy extension of the library.
+
+**Environments** handle the interaction dynamics and provide the problem specification through observation and action spaces. **Policies** encapsulate the neural network architectures, including both policy and value networks, along with any associated noise parameters or other architectural components. **Agents** serve as the orchestration layer, managing policy parameters, optimization procedures, logging, and the overall training loop. Finally, **algorithms** define the specific loss functions, hyperparameters, and algorithmic details that distinguish different DRL methods.
+
+This modular approach enables researchers to mix and match components—for instance, using the same policy architecture with different algorithms, or applying the same algorithm to different environment types. The clear separation also facilitates testing, debugging, and extension of individual components without affecting the entire system.
+
 ### Environments
-- Interface
-    - CommonRLInterface deviates from standard gym interface, but is more flexible
-    - extend CommonRLInterface with truncation
-    - use the step interface from gym for parallell environments
-        - auto resetting, info for bootstrapping and so on
-- Multithreaded parallel environments
-    - could expand to distributed environments on several processes
+
+The environment interface is designed to support both single and parallel environments while maintaining flexibility for different use cases. Our design draws inspiration from both the CommonRL interface and the Gymnasium step interface, combining their strengths to create a more comprehensive solution.
+
+#### Interface Design
+
+The environment interface is built around two main abstract types: `AbstractEnv` for single environments and `AbstractParallellEnv` for parallel environments. This hierarchy allows for specialized implementations while maintaining a common interface for basic operations.
+
+For single environments, we extend the interface from CommonRLInterface.jl with additional functionality to handle episode truncation correctly. The CommonRL interface provides a clean, minimalist approach that deviates from the standard Gymnasium@CITE (a repository of RL environments) interface but offers greater flexibility for custom implementations. Key functions include `reset!(env)` to initialize episodes, `act!(env, action)` to execute actions and receive rewards, `observe(env)` to get current observations, and separate `terminated(env)` and `truncated(env)` functions to distinguish between natural episode endings and time-based cutoffs.
+
+The distinction between termination and truncation is crucial for proper bootstrapping in value function estimation. When an episode terminates naturally (e.g., the agent reaches a goal or fails), the value of the final state should be zero. However, when an episode is truncated due to time limits, we need to bootstrap using the value function estimate to approximate the remaining return, as discussed previously.
+
+For parallel environments, we adopt the step interface pattern from Gymnasium, which assumes automatic environment resetting and comprehensive information passing. The `step!(env, actions)` function returns rewards, termination flags, truncation flags, and additional information for each environment. When individual environments are truncated, the final observation before reset is provided in the info dictionary as `"terminal_observation"`, enabling proper bootstrapping calculations.
+
+While using both interface patterns adds complexity compared to adopting a single approach, this dual design provides significant benefits. The lower-level CommonRL interface allows for maximum flexibility when implementing custom parallel environments or specialized interaction patterns. Meanwhile, the higher-level step interface with automatic resetting simplifies the implementation of standard parallel training loops.
+
+#### Multithreaded Parallel Environments
+
+Our implementation utilize the natively multithreaded nature of Julia, allowing multiple environment instances to run concurrently on different CPU cores. This parallelization significantly improves sample collection efficiency, especially for computationally lightweight environments. The parallel environment abstraction handles thread safety and synchronization automatically, presenting a simple interface to the training algorithm.
+
+The current multithreaded implementation could be extended to support distributed environments across multiple processes or even multiple machines, enabling scalable training for more computationally demanding environments or larger-scale experiments. This is not implemented in the current version of the library, but could be implemted in the future.
 
 ### Spaces
-- Many fundamental spaces
-- Most important for continuous task are Box. 
-- A simplified version of the Box space is implemented, UniformBox.
+
+Action and observation spaces define the structure and constraints of the environment's inputs and outputs. Our implementation provides a foundation for various space types, with particular focus on continuous control tasks.
+
+The space system is built around an abstract type hierarchy starting with `AbstractSpace`, which allows for extensible space definitions. For continuous control tasks, the most important space type is the Box space, which represents multi-dimensional continuous spaces with defined bounds (although the bounds may be infinite). Our implementation includes `UniformBox`, a simplified but efficient version of the Box space that assumes uniform bounds across all dimensions.
+
+The `UniformBox{T}` type is parameterized by the numeric type `T` (typically `Float32` or `Float64`) and contains three key components: `low` and `high` bounds that apply uniformly across all dimensions, and a `shape` tuple that defines the dimensionality. This design choice trades some generality for simplicity and performance, as many control tasks use symmetric bounds (e.g., joint angle limits or normalized action ranges).
+
+The space implementation integrates seamlessly with Julia's random number generation system by extending `Random.rand()`. This allows for easy sampling of valid actions during exploration or testing. The sampling function generates uniform random values within the specified bounds and can handle both single samples and batch sampling for vectorized environments. Additionally, the `in` operator is overloaded to provide efficient bounds checking, ensuring that actions or observations fall within the valid space constraints.
 
 ### Neural Networks
-- Using the Lux.jl package
-    - pure julia implementation
-    - explicitly parameterised
-    - custom wight initialization using WeightInitializers.jl, part of Lux
-    - support for multiple Automatic Differentiation backends
-    - suport for acceleration on GPU and even TPU using Reactant.jl
-        - compiles to MLIR and XLA
-- Custom networks
-- a single loss functions for the combined parameters
-    - not separate training of actor and critic, as in Crux.jl
-- Policy Interface
-    - predict
-    - get logprobs and entropy
-    - ...
+
+Our neural network implementation leverages Lux.jl, a modern Julia package that provides several advantages over traditional deep learning frameworks. Lux.jl is a pure Julia implementation with explicit parameterization, meaning that network parameters are separate from the network structure itself. This design enables more flexible parameter manipulation, easier debugging, and better integration with Julia's scientific computing ecosystem.
+
+#### Lux.jl Framework Benefits
+
+The choice of Lux.jl brings several technical advantages. The explicit parameterization allows for clean separation between network architecture and learned parameters, facilitating advanced techniques like parameter sharing, meta-learning, and custom optimization schemes. The framework supports custom weight initialization through WeightInitializers.jl, enabling implementation of specific initialization strategies like orthogonal initialization that are common in RL training.
+
+Lux.jl's support for multiple automatic differentiation backends provides flexibility in choosing the most appropriate differentiation method for different components of the algorithm. Furthermore, the framework's compatibility with Reactant.jl enables acceleration on GPUs and even TPUs through compilation to MLIR and XLA, providing a path to high-performance computing when needed.
+
+#### Policy Architecture
+
+The policy implementation follows an actor-critic architecture through the `ActorCriticPolicy` type, which encapsulates both policy and value networks. The architecture consists of three main components: a feature extractor that processes raw observations, an actor head that outputs action distributions, and a critic head that estimates state values.
+
+For continuous control tasks, the default architecture uses fully connected layers with orthogonal weight initialization. The feature extractor flattens the input observations, while the actor and critic heads consist of two hidden layers with configurable activation functions (defaulting to `tanh`). The actor head outputs the mean of the action distribution, while a separate learnable parameter maintains the log standard deviation for exploration noise.
+
+The implementation supports both shared and separate network architectures. In the shared approach, the feature extractor parameters are common to both actor and critic, with separate heads for policy and value outputs. This parameter sharing can improve sample efficiency by allowing the networks to learn common representations. Alternatively, completely separate networks can be used when more architectural flexibility is required. The default is to use separate networks for continuous tasks, and we follow that practice herein.
+
+#### Policy Interface
+
+The policy interface provides a clean abstraction for different types of neural network policies. Key methods include `predict()` for action selection (with optional deterministic mode), `predict_values()` for value estimation, and `evaluate_actions()` for computing log probabilities and entropy of given state-action pairs. The main call operator combines action prediction and value estimation in a single forward pass, which is essential for efficient actor-critic training.
+
+The interface handles the complexities of continuous action spaces, including proper distribution parameterization, reparameterization trick for differentiable sampling, and action clipping to respect environment bounds.
+
+#### Unified Loss Function
+
+Unlike some other RL libraries that train actor and critic networks separately, our implementation uses a single combined loss function for all parameters. This approach simplifies the training loop and ensures that both policy and value networks are updated simultaneously with consistent gradients. The combined loss includes the PPO clipped objective for the policy, mean squared error for value function learning, and an entropy bonus for exploration, all weighted by appropriate coefficients and optimized together using a single optimizer instance.
 ### Agents
-- manages the policy, the parameters, optimizer, and logging
-- Using TensorBoardLogger.jl to track performance stats
-    - useful during development of the package and during development of environments
 
-### PPO implementation
-- Reference to 37 implemetnation details blog post
-    - ref studies
-- bootstrapping of values
-    - terminated vs truncated
-- normalizing advantages
-- entropy loss
-- 
-#### Implementation details:
-    1. Vectorized environments: yes
-    2. Orthogonal weight init and constant bias: yes
-    3. Adam Optimizer bias: 1f-5, following OpenAI original implementation
-        likely not significant
-    4. Learning rate annealing: no
-        - does not seem to be necessary for Pendulum
-    5. GAE: yes, using bootstrapping for truncated episodes (unlike original PPO)
-    6. Mini-batch update: yes (dividing each rolloutbuffer in mini-batches)
-    7. Advantage normalization: yes
-    8. Clipped PPO objective: yes
-    9. Value function clipping: no, papers indicate it uncessary or bad
-    10. Overall loss: yes, including entropy loss
-    11. Global gradient clipping: yes, using the PPO paper's recommended value of 0.5
-    12. Shared or separate networks: support for both, currently default to separate (default for continuous tasks)
-From the Continuous action space details:
-    1. Normal distributions: yes. The policy network outputs the mean of the distribution. 
-    2. State-independant std: yes, using a learnable parameter for each action dimension
-    3. Independant action components: not applicable, as we havent yet implemented support for more than one action dimension
-    4. separate networks: yes, as default for continuous tasks
-    5. action clipping: yes, clipping action to action space before sending to the environment, but storing the original action in the rollout buffer
-    6.-9. Normalization and scaling of observations and rewards: no. Does not seem necessary for Pendulum
+The agent serves as the central orchestration component that manages the policy, parameters, optimization, and logging throughout the training process. In our modular design, the agent acts as the interface between the high-level training algorithm and the lower-level policy and environment components.
+
+#### Agent Architecture
+
+The `ActorCriticAgent` struct encapsulates all the necessary components for training actor-critic algorithms. It maintains a reference to the policy network, a training state that includes parameters and optimizer state, and various hyperparameters that control the training process. The agent also manages training statistics and optional logging functionality.
+
+The training state is built using Lux.jl's `TrainState`, which provides a clean abstraction for managing network parameters, internal states (used by LSTM layers and other layer types), and optimizer state in a unified structure. This design ensures that all components remain synchronized during training and simplifies parameter updates and state management.
+
+Key hyperparameters managed by the agent include the number of steps per rollout (`n_steps`), mini-batch size for gradient updates (`batch_size`), number of training epochs per rollout (`epochs`), learning rate, and optimizer type. These parameters can be configured during agent construction, allowing for easy hyperparameter experimentation.
+
+#### Training Interface
+
+The agent provides a clean interface for the core operations needed during training. The `get_action_and_values()` method performs a complete forward pass through the policy, returning actions, value estimates, and log probabilities simultaneously. This combined operation is essential for efficient actor-critic training, as it ensures consistency between the action selection and value estimation.
+
+For inference and evaluation, the agent provides separate methods: `predict_actions()` for action selection (with optional deterministic mode) and `predict_values()` for value estimation. These methods handle the underlying parameter and state management automatically, presenting a simple interface to the calling code.
+
+The agent automatically manages the internal states of the neural networks, ensuring that any stateful components (such as recurrent layers) maintain their state correctly across function calls. This state management is handled transparently through Lux.jl's state system and Julia's `@reset` macro for immutable updates.
+
+#### Statistics and Logging
+
+Training statistics are tracked through an `AgentStats` structure that monitors key metrics such as the number of gradient updates performed and total steps taken in the environment. These statistics are essential for monitoring training progress and can be used for learning rate scheduling or other adaptive training strategies.
+
+The agent integrates with TensorBoardLogger.jl to provide comprehensive logging capabilities. When a log directory is specified during agent construction, training metrics, loss values, and other relevant statistics are automatically logged to TensorBoard format. This logging functionality is particularly valuable during development of both the library and new environments, as it provides real-time insights into training dynamics and helps identify potential issues.
+
+The logging system is optional and can be disabled for production runs where logging overhead is not desired. The verbosity level can be controlled to show progress bars and additional statistics during training, providing flexibility for different use cases.
+
+#### Randomness
+
+Random number generation is ubiquitous throughout reinforcement learning systems, appearing in multiple critical components: random initialization of environment states, random initialization of neural network parameters, random sampling from action distributions during exploration, random shuffling of experience data, and random sampling of mini-batches during training. The proper handling of random number generators (RNGs) is crucial for ensuring reproducibility, debugging, and fair comparison of different algorithms and hyperparameters.
+
+Reproducibility in deep reinforcement learning is particularly challenging due to the stochastic nature of the learning process. Small differences in random seeds can lead to dramatically different learning trajectories, making it essential to have precise control over all sources of randomness. Without careful RNG management, it becomes impossible to reproduce experimental results, debug training issues, or conduct meaningful ablation studies.
+
+Our implementation uses Julia's Random.jl standard library to handle all random number generation in a principled manner. Random.jl provides a robust framework for managing multiple independent random number generators, each with their own state and seed. This allows us to isolate different sources of randomness and control them independently, which is essential for both reproducibility and parallel execution.
+
+We extend the standard `rand()` and `seed!()` functions to work seamlessly with our custom space types. For example, calling `rand(action_space)` automatically samples a valid action from the specified action space bounds, while `seed!(env, seed_value)` sets the random seed for a specific environment instance. This extension provides a clean, intuitive interface that integrates naturally with Julia's existing random number ecosystem.
+
+The architecture employs a distributed RNG approach where each major component maintains its own independent random number generator. Each environment instance has its own RNG, which is used for environment-specific randomness such as initial state sampling, stochastic dynamics, and any environment-internal random events. This design ensures that the randomness in one environment does not affect others, which is crucial for parallel environment execution and reproducible results across different numbers of parallel workers.
+
+Similarly, each agent maintains its own RNG that is used for policy-related randomness, including sampling from action distributions during both training and inference, for initializing neural network parameters, and for shuffling the rollout buffer. By separating the agent's RNG from the environment RNGs, we ensure that changes in environment behavior (such as adding more parallel environments) do not affect the policy's random decisions, maintaining consistency in the learning process.
+
+This careful separation of random number generators provides several important benefits. First, it enables perfect reproducibility—given the same initial seeds, the entire training process will produce identical results regardless of the execution environment. Second, it facilitates debugging by allowing researchers to isolate sources of randomness and test specific scenarios. Third, it supports fair hyperparameter comparisons by ensuring that different hyperparameter settings are evaluated under identical random conditions. Finally, it enables seamless scaling to different numbers of parallel environments without affecting the underlying randomness patterns.
+
+
+### PPO Implementation
+
+Proximal Policy Optimization is notoriously difficult to reproduce accurately, with different implementations employing subtly different implementation details that can significantly impact performance. As noted in the comprehensive analysis by [Huang et al. (2022)](https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/), there are 37 distinct implementation details that can affect PPO's behavior, and the choice of which details to include can make the difference between successful learning and complete failure.
+
+The challenge stems from the fact that the original PPO paper, while providing the core algorithmic framework, does not specify many crucial implementation details that are necessary for practical success. Different research groups and libraries have made different choices for these details, leading to a proliferation of PPO variants that can produce vastly different results even when applied to the same environment.
+
+To ensure reproducibility and transparency, we explicitly document our implementation choices by following the recommendations from the above blog post. Below, we detail which implementation choices we have made and provide justification for each decision, particularly focusing on the details most relevant to continuous control tasks.
+
+#### Core Implementation Details
+
+**1. Vectorized Environments**: ✅ **Implemented**  
+We use vectorized environments to collect experience from multiple environment instances in parallel. This significantly improves sample collection efficiency and is essential for stable PPO training. Our implementation currently only supports multithreaded environment execution.
+
+**2. Orthogonal Weight Initialization and constant bias initialization**: ✅ **Implemented**  
+We initialize network weights using orthogonal initialization with specific gain values: √2 for hidden layers, 0.01 for the actor output layer, and 1.0 for the critic output layer. This initialization strategy helps maintain appropriate gradient magnitudes during early training and is crucial for stable learning in continuous control tasks.
+
+**3. Adam Optimizer with ε=1e-5**: ✅ **Implemented**  
+Following the original OpenAI implementation, we use the Adam optimizer with ε=1e-5 rather than the default ε=1e-8. While this detail may seem minor, it can affect numerical stability, particularly in environments with small reward scales.
+
+**4. Learning Rate Annealing**: ❌ **Not Implemented**  
+We do not implement learning rate annealing, as our experiments with the Pendulum environment showed that constant learning rates were sufficient for successful learning. This simplification reduces hyperparameter complexity without apparent performance loss for our target tasks.
+
+**5. Generalized Advantage Estimation (GAE)**: ✅ **Implemented**  
+We implement GAE with proper bootstrapping for truncated episodes. Importantly, our implementation correctly distinguishes between terminated and truncated episodes—when an episode is truncated due to time limits, we bootstrap using the value function estimate, whereas naturally terminated episodes use zero as the final value.
+
+**6. Mini-batch Updates**: ✅ **Implemented**  
+The collected rollout buffer is divided into mini-batches for gradient updates. This allows for multiple gradient steps per rollout while maintaining computational efficiency and helping to stabilize training.
+
+**7. Advantage Normalization**: ✅ **Implemented**  
+We normalize advantages across each mini-batch to have zero mean and unit variance. This normalization helps stabilize training by ensuring that the advantage estimates have consistent scale across different episodes and environments.
+
+**8. Clipped PPO Objective**: ✅ **Implemented**  
+We implement the core clipped surrogate objective that defines PPO, using the default clipping parameter ε=0.2. This prevents excessively large policy updates that could destabilize training.
+
+**9. Value Function Loss Clipping**: ❌ **Not Implemented**  
+We do not implement value function loss clipping, as recent studies suggest it is either unnecessary or potentially harmful for performance. Our implementation uses the standard mean squared error loss for value function training.
+
+**10. Combined Loss Function**: ✅ **Implemented**  
+We use a single combined loss function that includes the clipped policy objective, value function loss, and entropy bonus. This unified approach ensures consistent gradient updates across all network components.
+
+**11. Global Gradient Clipping**: ✅ **Implemented**  
+We implement global gradient clipping with a maximum norm of 0.5, as recommended in the original PPO paper. This prevents gradient explosion and helps maintain training stability.
+
+**12. Debug variables**: ✅ **Implemented**  
+We implement debug variables to monitor the training process. These variables are not used in the training loop, but are logged to TensorBoard for monitoring.These variables are: policy loss, value loss, entropy loss, clip fraction (the fraction of loss function terms that were clipped), approximate KL divergence (a measure of how much the policy has changed).
+
+**13. Network Architecture**: ✅ **Implemented**  
+We support both shared and separate network architectures. For continuous control tasks, we default to separate networks for actor and critic, which is the standard practice for such environments and provides architectural flexibility.
+
+#### Continuous Action Space Details
+
+**1. Gaussian Action Distributions**: ✅ **Implemented**  
+Our policy network outputs the mean of a Gaussian distribution for continuous actions. The standard deviation is maintained as a separate learnable parameter, enabling proper exploration in continuous action spaces.
+
+**2. State-Independent Standard Deviation**: ✅ **Implemented**  
+We use state-independent noise with learnable log standard deviation parameters for each action dimension. This approach is simpler and often more stable than state-dependent noise, particularly early in training.
+
+**4. Separate policy and value networks**: ✅ **Implemented**  
+Although we support parameter sharing, we default to separate networks for continuous control tasks.
+
+**5. Action Clipping**: ✅ **Implemented**  
+Actions are clipped to the valid action space bounds before being sent to the environment. However, we store the original (unclipped) actions in the rollout buffer to maintain proper gradient flow during policy updates.
+
+
+**6.-9. Observation and Reward Normalization**: ❌ **Not Implemented**  
+We do not implement observation or reward normalization, as our experiments with the Pendulum environment showed that such normalization was not necessary for successful learning. This simplification reduces implementation complexity while maintaining performance for our target domain. We plan to implement this in the future.
+
+
+#### Auxiliary implementation details
+**3. Early Stopping of Policy Updates**: ✅ **Implemented**  
+We implement early stopping of policy optimization based on the approximate KL divergence between the old and new policies. If this divergence exceeds a specified threshold during training, we halt the current policy update phase and return to collecting new rollouts. This helps prevent the policy from changing too drastically in a single update, maintaining training stability.
+
+
+This careful documentation of implementation details serves multiple purposes: it ensures reproducibility of our results, provides transparency about our design choices, and offers guidance for researchers who wish to extend or modify our implementation for their own work.
+
 ## Results
-..
-### The Pendulum environment
-    - Part of the Classical control suite of environments
-        -ref gymnasium
-    - a pendulum swinging in a plane
-    - theta between -pi and pi
-    - observe (x, y, v)
-        - observation space: x, y [-1,1], v [-8,8], normalized to [-1,1]
-    - action: apply torque
-        - action space: [-2, 2]
-    - reward: -theta^2 - 0.1*v^2 - 0.001*torque^2
-    - time step: 0.05
-    - episode length: 200
-    - show image
 
-### Hyperparameter search for Pendulum
-    - Find the best hyperparameters for our PPO implementation
-    - Utilize the multithreading capavilities of julia to run experiments in parallel
-        - combined with parallel environments, we can easily run 100s of environments simultaneously on a single machine (but very light weight env so not that cool)
-    - sample from a grid of hyperparameters
-    - train an agent with each set of hyperparameters, 5 runs with different seeds
-        - DRL results can vary alot with different seeds, so we need to run multiple times to make sure we are not just lucky
-    - evaluate by the average return over multiple samples episodes
-    - plot of hyper search
-    - show best hyperparameters
-    - show training stats of a multiple runs with best hyperparameters
+To validate our PPO implementation and demonstrate its effectiveness, we evaluate the algorithm on the classical Pendulum environment. This environment serves as an excellent testbed for continuous control algorithms and provides a clear benchmark for assessing whether our implementation can successfully learn meaningful policies.
+
+### The Pendulum Environment
+
+The Pendulum environment is part of the Classical Control suite of environments available in Gymnasium, representing one of the fundamental benchmarks for continuous control algorithms. The task involves controlling an inverted pendulum to remain upright by applying torque at its base—a classic problem in control theory that has been extensively studied in both traditional control and reinforcement learning contexts.
+
+#### Environment Dynamics
+
+The environment simulates a pendulum of fixed length swinging in a vertical plane. The pendulum's state is characterized by its angle θ (measured from the upright position) and angular velocity θ̇. The angle θ ranges between -π and π radians, where θ = 0 corresponds to the pendulum pointing straight up (the desired target state), and θ = ±π corresponds to the pendulum hanging straight down.
+
+The agent observes the environment through a three-dimensional observation vector consisting of cos(θ), sin(θ), and the angular velocity θ̇. This trigonometric representation ensures that the observation space is continuous and bounded, with cos(θ) and sin(θ) both lying in the range [-1, 1]. The angular velocity is bounded to the range [-8, 8] rad/s and is normalized to [-1, 1] for the agent's observation. This representation avoids the discontinuity that would arise from directly observing the angle θ, which wraps around at ±π.
+
+The action space consists of a single continuous value representing the torque applied to the pendulum base, bounded in the range [-2, 2] Newton-meters. This continuous action space makes the Pendulum environment particularly suitable for testing policy gradient algorithms like PPO, which naturally handle continuous control problems.
+
+![Pendulum environment](plots/pendulum_env.png)
+
+#### Reward Structure
+
+The reward function is designed to encourage the agent to keep the pendulum upright while minimizing energy consumption:
+
+$$r_t = -\theta^2 - 0.1 \cdot \dot{\theta}^2 - 0.001 \cdot u^2$$
+
+where θ is the angle from vertical, θ̇ is the angular velocity, and u is the applied torque. This reward structure has several important characteristics:
+
+- The primary term (-θ²) heavily penalizes deviations from the upright position, providing the strongest learning signal
+- The velocity term (-0.1·θ̇²) encourages smooth control by penalizing rapid movements
+- The torque term (-0.001·u²) promotes energy efficiency by discouraging unnecessarily large control actions
+
+The maximum possible reward per timestep is 0 (achieved when the pendulum is perfectly upright and stationary with no applied torque), while the minimum reward is unbounded below. In practice, rewards typically range from 0 to approximately -1600 for completely random policies.
+
+#### Episode Structure
+
+Each episode runs for exactly 200 timesteps with a simulation timestep of 0.05 seconds, corresponding to 10 seconds of simulated time. Episodes do not terminate early based on the pendulum's state—the agent must maintain control for the full duration regardless of performance. This fixed-length episode structure ensures consistent training data and prevents the agent from learning to exploit early termination conditions.
+
+The environment is reset to a random initial state at the beginning of each episode, with the initial angle sampled uniformly from [-π, π] and the initial angular velocity sampled from a smaller range around zero. This randomization ensures that the agent learns a robust policy that can handle various starting conditions rather than memorizing a solution for a specific initial state.
+
+A well-implemented PPO algorithm should achieve average episode returns of approximately -200 to -150 after sufficient training, representing successful pendulum control with only minor deviations from the upright position. Random policies typically achieve returns around -1600, providing a clear baseline for measuring learning progress.
+
+
+### Hyperparameter Search for Pendulum
+
+To validate our PPO implementation and identify optimal hyperparameters for the Pendulum environment, we conducted a comprehensive hyperparameter search leveraging Julia's native multithreading capabilities. This search process demonstrates both the effectiveness of our implementation and the computational advantages of Julia for parallel experimentation.
+
+Our hyperparameter search strategy utilizes Julia's multithreading to run experiments in parallel, as implemented in `hyperParamSearch.jl`. By combining multithreaded execution with our parallel environment implementation, we can efficiently run hundreds of environment instances simultaneously on a single machine. While the Pendulum environment is computationally lightweight, this approach showcases the scalability potential for more demanding environments in future work.
+
+The search process samples hyperparameters from predefined ranges rather than using a fixed grid, allowing for more efficient exploration of the hyperparameter space. Key hyperparameters include the discount factor γ (0.92-0.999), GAE parameter λ (0.8-0.98), PPO clipping range ε (0.1-0.3), learning rate (1e-5 to 1e-2 on a log scale), batch size (64 or 128), steps per environment per rollout (128, 256, or 512 steps), training epochs (10 or 20), and number of parallel environments (4, 8, or 16).
+
+We train each hyperparameter configuration with five different random seeds. This approach ensures that our results are statistically robust and not merely the result of fortunate random initialization. The evaluation metric is the average return over multiple test episodes after training completion.
+
+The search infrastructure uses DrWatson.jl for experiment management and result caching, ensuring reproducibility and efficient resource utilization. Each trial is automatically logged with TensorBoard for detailed monitoring of training dynamics, and results are systematically collected and analyzed to identify the best-performing configurations. The implementation tracks both individual runs and aggregated statistics across seeds.
+
+### Training statistics using the best hyperparameters
+The following hyperparameters were found to be the best:
+
+
+
+
+
+
+
 ## Conclusion
 - Successfully implemented PPO in julia, with parallell environments and support for custom neural networks. Sucessfull learning of the Pendulum environment.
 - Lots to do before fully fledged:
