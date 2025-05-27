@@ -5,15 +5,17 @@ using DRiL
 using Zygote
 using CairoMakie
 using Accessors
+using IntervalSets
+using Random
 ##
 env = MultiThreadedParallelEnv([GoalReachingEnv() for _ in 1:16])
 policy = ActorCriticPolicy(observation_space(env), action_space(env))
 agent = ActorCriticAgent(policy; verbose=2, n_steps=256, learning_rate=3f-4, epochs=10,
     log_dir="logs/goalreaching/run", batch_size=64)
-alg = PPO(; ent_coef=0.01f0, vf_coef=0.5f0, gamma=0.99f0, gae_lambda=0.9f0)
+alg = PPO(; ent_coef=0.005f0, vf_coef=0.5f0, gamma=0.99f0, gae_lambda=0.85f0)
 DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, ["env/avg_step_rew", "train/loss"])
 @reset agent.learning_rate = 3f-5
-learn_stats = learn!(agent, env, alg; max_steps=300_000)
+learn_stats = learn!(agent, env, alg; max_steps=100_000)
 ##
 single_env = GoalReachingEnv()
 observations, actions, rewards = collect_trajectory(agent, single_env)
@@ -21,11 +23,30 @@ player_positions = getindex.(observations, 1)
 goal_positions = getindex.(observations, 2)
 
 fig = Figure(size=(800, 600))
-ax = Axis(fig[1, 1])
+ax = Axis(fig[1, 1], limits=(nothing, (-1, 1)))
+error_ax = Axis(fig[1, 2], yscale=log10)
 lines!(ax, player_positions, label="Player")
 lines!(ax, goal_positions, label="Goal")
+lines!(error_ax, abs.(player_positions .- goal_positions), label="Error")
 axislegend(ax, position=:rt)
 fig
+
+##
+function optimal_action(obs)
+    ppos, gpos = obs
+    ppos = ppos[1]
+    gpos = gpos[1]
+    if ppos > gpos
+        return -(ppos-gpos)/(ppos+1)
+    else
+        return (gpos-ppos)/(1-ppos)
+    end
+end
+##
+o = observe(single_env)
+optimal_action(o)
+a = predict_actions(agent, o, deterministic=true)
+r = act!(single_env, a)
 
 ##
 n=500
