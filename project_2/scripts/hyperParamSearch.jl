@@ -30,16 +30,18 @@ end
 
 function sample_hyperparams(rng::AbstractRNG)
     return Dict(
-        "gamma" => rand(0.92f0 .. 0.999f0),  # 0.85-0.99
-        "gae_lambda" => rand(0.8f0 .. 0.98f0),  # 0.9-1.0
-        "clip_range" => rand(0.1f0 .. 0.3f0),  # 0.1-0.3
-        "vf_coef" => rand(0.2f0 .. 0.8f0),  # 0.1-1.0
-        "ent_coef" => rand(0f0 .. 0.001f0),  # 0.0-0.01
-        "learning_rate" => 10^(rand(rng, -5.0f0 .. -2.0f0)),  # 1e-5 to 1e-2
-        "batch_size" => rand(rng, [64, 128]),
-        "n_steps" => rand(rng, [128, 256, 512]),
-        "epochs" => rand(rng, [10, 20]),
-        "n_envs" => rand(rng, [4, 8, 16])
+        "gamma" => rand(rng, 0.92f0 .. 0.999f0),  # 0.85-0.99
+        "gae_lambda" => rand(rng, 0.8f0 .. 0.98f0),  # 0.9-1.0
+        "clip_range" => rand(rng, 0.1f0 .. 0.3f0),  # 0.1-0.3
+        "vf_coef" => rand(rng, 0.2f0 .. 0.8f0),  # 0.1-1.0
+        "ent_coef" => rand(rng, [0f0 , 0.01f0]),  # 0.0-0.01
+        "learning_rate" => 10^(rand(rng, -4.0f0 .. -3.5f0)),  # 
+        "batch_size" => rand(rng, [32, 64, 128]),
+        "n_steps" => rand(rng, [64, 128, 256, 512, 1024]),
+        "epochs" => rand(rng, [5, 10, 15, 20]),
+        "n_envs" => rand(rng, [2, 4, 8, 16]),
+        "normalizeWrapper" => rand(rng, [true, false]),
+        "scalingWrapper" => rand(rng, [true, false])
     )
 end
 
@@ -64,10 +66,16 @@ function run_single_trial(params::Dict, experiment_name::String)
         ent_coef=Float32(params["ent_coef"])
     )
     # Create environment
-    envs = [PendulumEnv() for _ in 1:params["n_envs"]]
+    if params["scalingWrapper"]
+        envs = [PendulumEnv() |> ScalingWrapperEnv for _ in 1:params["n_envs"]]
+    else
+        envs = [PendulumEnv() for _ in 1:params["n_envs"]]
+    end
     env = MultiThreadedParallelEnv(envs)
     env = MonitorWrapperEnv(env, 50)
-    env = NormalizeWrapperEnv(env, gamma=alg.gamma)
+    if params["normalizeWrapper"]
+        env = NormalizeWrapperEnv(env, gamma=alg.gamma)
+    end
 
     # Create agent
     policy = ActorCriticPolicy(observation_space(env), action_space(env))
@@ -82,10 +90,11 @@ function run_single_trial(params::Dict, experiment_name::String)
         log_dir=datadir("experiments", experiment_name, "logs", "trial_$(params["trial_id"])_seed_$(params["seed_idx"])")
     )
 
-    DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, ["env/avg_step_rew", "train/loss"])
+    
+    DRiL.TensorBoardLogger.write_hparams!(agent.logger, params, ["env/ep_rew_mean", "env/ep_len_mean", "train/loss"])
     # Train
     t_start = time()
-    learn!(agent, env, alg; max_steps=params["max_steps_per_trial"])
+    learn!(agent, env, alg; max_steps=Int(params["max_steps_per_trial"]))
     t_end = time()
     elapsed_time = t_end - t_start
     # Evaluate
@@ -110,7 +119,7 @@ function run_hyperparameter_search(config::SearchConfig=SearchConfig())
         # Sample hyperparameters
         params = sample_hyperparams(rng)
         params["trial_id"] = trial
-        params["max_steps_per_trial"] = config.max_steps_per_trial
+        params["max_steps_per_trial"] = Int(config.max_steps_per_trial)
 
         # Run multiple seeds for this configuration
         for seed_idx in 1:config.n_seeds
