@@ -200,7 +200,7 @@ using WGLMakie
 # using CairoMakie
 using Statistics
 using LinearAlgebra
-using Pendulum
+using ClassicControlEnvironments
 ##
 env = MultiThreadedParallelEnv([PendulumEnv() |> ScalingWrapperEnv for _ in 1:16])
 policy = ActorCriticPolicy(observation_space(env), action_space(env))
@@ -216,7 +216,7 @@ agent = load("data/saved_agent.jld2")["agent"]
 ## viz
 single_env = PendulumEnv(; max_steps=500) |> ScalingWrapperEnv
 observations, actions, rewards = collect_trajectory(agent, single_env)
-actions = first.(actions) .* 2  
+actions = first.(actions) .* 2
 plot_trajectory_interactive(PendulumEnv(), observations, actions, rewards)
 ##
 Pendulum.interactive_viz(PendulumEnv())
@@ -301,7 +301,7 @@ actions_3d = predict_actions(agent, mock_obs_3d; deterministic=true)
 values_3d = predict_values(agent, mock_obs_3d)
 
 # Calculate rewards
-rewards_3d = [sum(Pendulum.pendulum_rewards(theta, vel * 8.0f0, action * 2f0)) 
+rewards_3d = [sum(Pendulum.pendulum_rewards(theta, vel * 8.0f0, action * 2f0))
               for (theta, vel, action) in zip(theta_flat, velocity_flat, vec(actions_3d))]
 
 # Reshape back to grid format
@@ -312,12 +312,12 @@ rewards_grid = reshape(rewards_3d, length(velocities_3d), length(thetas_3d))
 # Create 3D surface plots
 fig_3d = Figure(size=(1200, 400))
 
-ax_actions_3d = Axis3(fig_3d[1, 1], xlabel="θ", ylabel="Velocity", zlabel="Actions", 
-                      title="Actions Surface")
-ax_values_3d = Axis3(fig_3d[1, 2], xlabel="θ", ylabel="Velocity", zlabel="Values", 
-                     title="Values Surface")
-ax_rewards_3d = Axis3(fig_3d[1, 3], xlabel="θ", ylabel="Velocity", zlabel="Rewards", 
-                      title="Rewards Surface")
+ax_actions_3d = Axis3(fig_3d[1, 1], xlabel="θ", ylabel="Velocity", zlabel="Actions",
+    title="Actions Surface")
+ax_values_3d = Axis3(fig_3d[1, 2], xlabel="θ", ylabel="Velocity", zlabel="Values",
+    title="Values Surface")
+ax_rewards_3d = Axis3(fig_3d[1, 3], xlabel="θ", ylabel="Velocity", zlabel="Rewards",
+    title="Rewards Surface")
 
 surface!(ax_actions_3d, thetas_3d, velocities_3d, actions_3d |> vec, colormap=:viridis)
 surface!(ax_values_3d, thetas_3d, velocities_3d, values_3d |> vec, colormap=:plasma)
@@ -330,7 +330,7 @@ save("plots/action_values_rewards_3d_surface.png", fig_3d)
 fig_heatmap = Figure(size=(1200, 400))
 
 ax_actions_heat = Axis(fig_heatmap[1, 1], xlabel="θ", ylabel="Velocity", title="Actions Heatmap")
-ax_values_heat = Axis(fig_heatmap[1, 2], xlabel="θ", ylabel="Velocity", title="Values Heatmap")  
+ax_values_heat = Axis(fig_heatmap[1, 2], xlabel="θ", ylabel="Velocity", title="Values Heatmap")
 ax_rewards_heat = Axis(fig_heatmap[1, 3], xlabel="θ", ylabel="Velocity", title="Rewards Heatmap")
 
 hm1 = heatmap!(ax_actions_heat, thetas_3d, velocities_3d, actions_grid, colormap=:viridis)
@@ -338,7 +338,7 @@ hm2 = heatmap!(ax_values_heat, thetas_3d, velocities_3d, values_grid, colormap=:
 hm3 = heatmap!(ax_rewards_heat, thetas_3d, velocities_3d, rewards_grid, colormap=:inferno)
 
 Colorbar(fig_heatmap[1, 4], hm1, label="Actions")
-Colorbar(fig_heatmap[1, 5], hm2, label="Values")  
+Colorbar(fig_heatmap[1, 5], hm2, label="Values")
 Colorbar(fig_heatmap[1, 6], hm3, label="Rewards")
 
 fig_heatmap

@@ -2,7 +2,7 @@ using DrWatson
 @quickactivate :project_2
 using DRiL
 using DataFrames
-using Pendulum
+using ClassicControlEnvironments
 using WGLMakie
 ##
 study_name = "hyper_search_third"

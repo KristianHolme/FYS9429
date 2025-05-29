@@ -1,7 +1,7 @@
 using DrWatson
 @quickactivate :project_2
 using DataFrames
-using Pendulum
+using ClassicControlEnvironments
 # using WGLMakie
 # WGLMakie.activate!()
 using AlgebraOfGraphics
