@@ -22,6 +22,7 @@ using Base.Threads
     experiment_name::String = "ppo_search_$(Dates.format(now(), "yyyy-mm-dd_HH-MM"))"
     n_seeds::Int = 5
     random_seed::Int = 42
+    environment::String = "Pendulum"  # Environment type
 end
 
 # =============================================================================
@@ -29,17 +30,18 @@ end
 # =============================================================================
 
 function sample_hyperparams(rng::AbstractRNG)
-    return Dict(
-        "gamma" => rand(rng, 0.92f0 .. 0.999f0),  # 0.85-0.99
+    return Dict{String,Any}(
+        "gamma" => rand(rng, 0.96f0 .. 1f0),  # 0.85-0.99
         "gae_lambda" => rand(rng, 0.8f0 .. 0.98f0),  # 0.9-1.0
-        "clip_range" => rand(rng, 0.1f0 .. 0.3f0),  # 0.1-0.3
+        "clip_range" => rand(rng, 0.12f0 .. 0.35f0),  # 0.1-0.3
         "vf_coef" => rand(rng, 0.2f0 .. 0.8f0),  # 0.1-1.0
-        "ent_coef" => rand(rng, [0f0 , 0.01f0]),  # 0.0-0.01
-        "learning_rate" => 10^(rand(rng, -4.0f0 .. -3.5f0)),  # 
+        "ent_coef" => rand(rng, 0f0 .. 0.01f0),  # 0.0-0.01
+        "learning_rate" => 10^(rand(rng, -5.0f0 .. -3f0)),  # 
         "batch_size" => rand(rng, [32, 64, 128]),
-        "n_steps" => rand(rng, [64, 128, 256, 512, 1024]),
+        "n_steps" => rand(rng, [16, 32, 64, 128]),
         "epochs" => rand(rng, [5, 10, 15, 20]),
         "n_envs" => rand(rng, [2, 4, 8, 16]),
+        "log_std_init" => rand(rng, -1.0f0 .. 1.0f0),
         "normalizeWrapper" => rand(rng, [true, false]),
         "scalingWrapper" => rand(rng, [true, false])
     )
@@ -48,6 +50,54 @@ end
 # =============================================================================
 # TRAINING AND EVALUATION
 # =============================================================================
+
+function create_single_environment(env_type::String, params::Dict)
+    """Create environment based on environment type"""
+    base_env = if env_type == "Pendulum"
+        PendulumEnv()
+    elseif env_type == "MountainCar"
+        MountainCarEnv()
+    elseif env_type == "CartPole"
+        CartPoleEnv()
+    else
+        error("Unknown environment type: $env_type")
+    end
+
+    # Apply scaling wrapper if requested
+    if params["scalingWrapper"]
+        base_env = ScalingWrapperEnv(base_env)
+    end
+
+    return base_env
+end
+
+function create_env(env_type::String, params::Dict)
+    envs = [create_single_environment(params["environment"], params) for _ in 1:params["n_envs"]]
+    env = MultiThreadedParallelEnv(envs)
+    env = MonitorWrapperEnv(env, 50)
+    if params["normalizeWrapper"]
+        env = NormalizeWrapperEnv(env, gamma=Float32(params["gamma"]))
+    end
+    return env
+end
+
+function get_alg(params::Dict)
+    return PPO(
+        gamma=Float32(params["gamma"]),
+        gae_lambda=Float32(params["gae_lambda"]),
+        clip_range=Float32(params["clip_range"]),
+        vf_coef=Float32(params["vf_coef"]),
+        ent_coef=Float32(params["ent_coef"])
+    )
+end
+
+function get_policy(params::Dict)
+    return ActorCriticPolicy(observation_space(env), action_space(env), log_std_init=Float32(params["log_std_init"]))
+end
+
+function get_agent(params::Dict)
+    return ActorCriticAgent(get_policy(params), get_alg(params))
+end
 
 function evaluate_trained_agent(agent, env, n_episodes::Int=100)
     set_training!(env, false)
@@ -65,20 +115,12 @@ function run_single_trial(params::Dict, experiment_name::String)
         vf_coef=Float32(params["vf_coef"]),
         ent_coef=Float32(params["ent_coef"])
     )
-    # Create environment
-    if params["scalingWrapper"]
-        envs = [PendulumEnv() |> ScalingWrapperEnv for _ in 1:params["n_envs"]]
-    else
-        envs = [PendulumEnv() for _ in 1:params["n_envs"]]
-    end
-    env = MultiThreadedParallelEnv(envs)
-    env = MonitorWrapperEnv(env, 50)
-    if params["normalizeWrapper"]
-        env = NormalizeWrapperEnv(env, gamma=alg.gamma)
-    end
+
+    # Create multiple environments for parallel training
+    env = create_env(params["environment"], params)
 
     # Create agent
-    policy = ActorCriticPolicy(observation_space(env), action_space(env))
+    policy = ActorCriticPolicy(observation_space(env), action_space(env), log_std_init=Float32(params["log_std_init"]))
     agent = ActorCriticAgent(
         policy;
         learning_rate=Float32(params["learning_rate"]),
@@ -87,10 +129,10 @@ function run_single_trial(params::Dict, experiment_name::String)
         epochs=params["epochs"],
         verbose=0,
         rng=Xoshiro(params["seed"]),
-        log_dir=datadir("experiments", experiment_name, "logs", "trial_$(params["trial_id"])_seed_$(params["seed_idx"])")
+        log_dir=datadir("experiments", params["environment"], experiment_name, "logs", "trial_$(params["trial_id"])_seed_$(params["seed_idx"])")
     )
 
-    
+
     DRiL.TensorBoardLogger.write_hparams!(agent.logger, params, ["env/ep_rew_mean", "env/ep_len_mean", "train/loss"])
     # Train
     t_start = time()
@@ -120,6 +162,7 @@ function run_hyperparameter_search(config::SearchConfig=SearchConfig())
         params = sample_hyperparams(rng)
         params["trial_id"] = trial
         params["max_steps_per_trial"] = Int(config.max_steps_per_trial)
+        params["environment"] = config.environment
 
         # Run multiple seeds for this configuration
         for seed_idx in 1:config.n_seeds
@@ -131,7 +174,7 @@ function run_hyperparameter_search(config::SearchConfig=SearchConfig())
             filename = "trial_$(trial)_seed_$(seed_idx)"
             result = produce_or_load(
                 seed_params,
-                datadir("experiments", config.experiment_name, "results");
+                datadir("experiments", config.environment, config.experiment_name, "results");
                 filename) do params
                 return run_single_trial(params, config.experiment_name)
             end
@@ -145,9 +188,9 @@ end
 # ANALYSIS
 # =============================================================================
 
-function analyze_results(experiment_name::String)
+function analyze_results(experiment_name::String, environment::String="Pendulum")
     # Collect all results
-    df = collect_results(datadir("experiments", experiment_name, "results"))
+    df = collect_results(datadir("experiments", environment, experiment_name, "results"))
 
     # Group by trial_id and aggregate across seeds
     grouped_df = combine(groupby(df, :trial_id)) do group
@@ -163,6 +206,9 @@ function analyze_results(experiment_name::String)
             n_steps=first(group.n_steps),
             epochs=first(group.epochs),
             n_envs=first(group.n_envs),
+            normalizeWrapper=first(group.normalizeWrapper),
+            scalingWrapper=first(group.scalingWrapper),
+            log_std_init=first(group.log_std_init),
 
             # Aggregated results
             mean_return=mean(group.eval_return),
@@ -176,25 +222,25 @@ function analyze_results(experiment_name::String)
     best_config = grouped_df[best_idx, :]
 
     # Save results
-    experiment_dir = datadir("experiments", experiment_name)
+    experiment_dir = datadir("experiments", environment, experiment_name)
     CSV.write(joinpath(experiment_dir, "individual_runs.csv"), df)
     CSV.write(joinpath(experiment_dir, "aggregated_results.csv"), grouped_df)
 
     @info "Best configuration:"
     @info "  Mean return: $(round(best_config.mean_return, digits=3)) ± $(round(best_config.std_return, digits=3))"
     @info "  Hyperparameters:"
-    for param in [:gamma, :gae_lambda, :clip_range, :vf_coef, :ent_coef, :learning_rate, :batch_size, :n_steps, :epochs]
+    for param in [:gamma, :gae_lambda, :clip_range, :vf_coef, :ent_coef, :learning_rate, :batch_size, :n_steps, :epochs, :log_std_init]
         @info "    $param: $(best_config[param])"
     end
 
     return grouped_df, best_config
 end
 
-function get_best_hyperparams(experiment_name::String)
-    _, best_config = analyze_results(experiment_name)
+function get_best_hyperparams(experiment_name::String, environment::String="Pendulum")
+    _, best_config = analyze_results(experiment_name, environment)
 
     params = Dict{String,Any}()
-    for param in [:gamma, :gae_lambda, :clip_range, :vf_coef, :ent_coef, :learning_rate, :batch_size, :n_steps, :epochs, :n_envs]
+    for param in [:gamma, :gae_lambda, :clip_range, :vf_coef, :ent_coef, :learning_rate, :batch_size, :n_steps, :epochs, :n_envs, :log_std_init]
         params[string(param)] = best_config[param]
     end
 
@@ -205,21 +251,22 @@ end
 # MAIN FUNCTION
 # =============================================================================
 
-function main(; n_trials::Int=50, max_steps_per_trial::Int=30_000, experiment_name::String="ppo_search_$(Dates.format(now(), "yyyy-mm-dd_HH-MM"))")
+function main(; n_trials::Int=50, max_steps_per_trial::Int=30_000, experiment_name::String="ppo_search_$(Dates.format(now(), "yyyy-mm-dd_HH-MM"))", environment::String="Pendulum")
     config = SearchConfig(
         n_trials=n_trials,
         max_steps_per_trial=max_steps_per_trial,
-        experiment_name=experiment_name
+        experiment_name=experiment_name,
+        environment=environment
     )
 
     # Run search
     run_hyperparameter_search(config)
 
     # Analyze results
-    grouped_df, best_config = analyze_results(experiment_name)
+    grouped_df, best_config = analyze_results(experiment_name, environment)
 
     @info "Hyperparameter search complete!"
-    @info "Results saved to: $(datadir("experiments", experiment_name))"
+    @info "Results saved to: $(datadir("experiments", environment, experiment_name))"
 
     return grouped_df, best_config
 end
@@ -228,6 +275,7 @@ end
 # EXAMPLE USAGE
 # =============================================================================
 
-# Quick test: df, best_config = main(n_trials=5, max_steps_per_trial=5_000)
-# Full search: df, best_config = main(n_trials=256, max_steps_per_trial=100_000)
-# Get best params: get_best_hyperparams("your_experiment_name")
+# Quick test with Pendulum: df, best_config = main(n_trials=5, max_steps_per_trial=5_000, environment="Pendulum")
+# Quick test with MountainCar: df, best_config = main(n_trials=5, max_steps_per_trial=5_000, environment="MountainCar")
+# Full search: df, best_config = main(n_trials=256, max_steps_per_trial=100_000, environment="MountainCar")
+# Get best params: get_best_hyperparams("your_experiment_name", "MountainCar")
