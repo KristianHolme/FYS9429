@@ -16,6 +16,10 @@ env = MultiThreadedParallelEnv([PendulumEnv() for _ in 1:16])
 env = MonitorWrapperEnv(env, stats_window_size)
 env = NormalizeWrapperEnv(env, gamma=alg.gamma)
 
+##
+set_training!(env, false)
+
+##
 all_rewards = Float32[]
 all_obs = Vector{Float32}[]
 for _ in 1:200

@@ -10,7 +10,7 @@ using Statistics
 using CairoMakie
 CairoMakie.activate!()
 ##
-experiment_name = "ppo_search_2025-05-25_16-54"
+experiment_name = "ppo_search_2025-05-30_16-47"
 df, best_config = analyze_results(experiment_name)
 ##
 T = Float32
@@ -55,7 +55,7 @@ end
 columns = names(df)
 fig_opts = (size=(1000, 600),)
 
-datacols = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+datacols = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
 ## giant cross plot
 fig = Figure(size=(2000, 2000))
 for (ix, i) in enumerate(datacols), (jx, j) in enumerate(datacols)
