@@ -29,7 +29,7 @@ mutable struct GoalReachingEnv <: AbstractEnv
         obs_space = UniformBox{Float32}(-1.0f0, 1.0f0, (2,))
         # Action: continuous in (-1, 1)
         act_space = UniformBox{Float32}(-1.0f0, 1.0f0, (1,))
-        
+
         new(0.0f0, 0.0f0, obs_space, act_space, 0, max_steps, false, false, 0.0f0, Dict{String,Any}(), rng)
     end
 end
@@ -48,14 +48,14 @@ function DRiL.reset!(env::GoalReachingEnv)
     env._truncated = false
     env._last_reward = 0.0f0
     env._info = Dict{String,Any}()
-    
+
     # Set random goal position in (-1, 1)
     env.goal_position = rand(env.rng, Float32) * 2.0f0 - 1.0f0
-    
+
     # Set initial player position (could be random or fixed)
     env.player_position = rand(env.rng, Float32) * 2.0f0 - 1.0f0
-    
-    return DRiL.observe(env)
+
+    return nothing
 end
 
 function DRiL.observe(env::GoalReachingEnv)
@@ -68,7 +68,7 @@ end
 
 function DRiL.act!(env::GoalReachingEnv, action::Float32)
     env.step_count += 1
-    
+
     # Linear interpolation movement mapping
     if action >= 0.0f0
         # Move towards position 1: new_pos = current + action * (1 - current)
@@ -77,19 +77,19 @@ function DRiL.act!(env::GoalReachingEnv, action::Float32)
         # Move towards position -1: new_pos = current + |action| * (-1 - current)
         env.player_position = env.player_position + (-action) * (-1.0f0 - env.player_position)
     end
-    
+
     # Clamp to bounds to handle floating point precision issues
     env.player_position = clamp(env.player_position, -1.0f0, 1.0f0)
-    
+
     # Calculate reward: 1 - (distance / 2) to keep it in (0, 1)
     distance = abs(env.player_position - env.goal_position)
     reward = 1.0f0 - (distance / 2.0f0)
-    
+
     # Check termination conditions
     env._truncated = env.step_count >= env.max_steps
     # Could add early termination if very close to goal
     env._terminated = false  # This env doesn't naturally terminate
-    
+
     env._last_reward = reward
     env._info = Dict{String,Any}(
         "step" => env.step_count,
@@ -97,6 +97,6 @@ function DRiL.act!(env::GoalReachingEnv, action::Float32)
         "player_position" => env.player_position,
         "goal_position" => env.goal_position
     )
-    
+
     return reward
 end
