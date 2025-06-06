@@ -100,9 +100,9 @@ function get_agent(params::Dict)
 end
 
 function evaluate_trained_agent(agent, env, n_episodes::Int=100)
-    set_training!(env, false)
+    env = set_training(env, false)
     eval_stats = evaluate_agent(agent, env; n_eval_episodes=n_episodes)
-    set_training!(env, true)
+    env = set_training(env, true)
     return eval_stats.mean_reward
 end
 

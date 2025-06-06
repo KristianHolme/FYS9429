@@ -17,7 +17,7 @@ env = MonitorWrapperEnv(env, stats_window_size)
 env = NormalizeWrapperEnv(env, gamma=alg.gamma)
 
 ##
-set_training!(env, false)
+env = set_training(env, false)
 
 ##
 all_rewards = Float32[]

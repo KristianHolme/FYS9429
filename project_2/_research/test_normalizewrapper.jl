@@ -22,6 +22,12 @@ DRiL.reset!(env::NotNormalizedEnv) = nothing
 env = MultiThreadedParallelEnv([NotNormalizedEnv() for _ in 1:4])
 env = NormalizeWrapperEnv(env)
 ##
+is_training(env)
+env = set_training(env, false)
+is_training(env)
+env
+
+##
 all_obs = Vector{Float32}[]
 all_rewards = Float32[]
 for _ in 1:10000
