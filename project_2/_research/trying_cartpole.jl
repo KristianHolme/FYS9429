@@ -6,7 +6,7 @@ using WGLMakie
 using Zygote
 WGLMakie.activate!()
 ##
-env = CartPoleEnv(theta_threshold_radians=10.0f6)
+env = CartPoleEnv()
 ##
 ClassicControlEnvironments.plot(env.problem)
 ClassicControlEnvironments.interactive_viz(env)
@@ -40,7 +40,7 @@ rng = cartagent.rng
 
 feats, st = DRiL.extract_features(cartpolicy, obs, ps, st)
 feats
-action_logits, st = DRiL.get_actions_from_latent(cartpolicy, feats, ps, st)  # For discrete, these are logits
+action_logits, st = DRiL.get_actions_from_features(cartpolicy, feats, ps, st)  # For discrete, these are logits
 action_logits
 actions = DRiL.get_discrete_actions(cartpolicy, action_logits, Random.default_rng(); log_probs=false, deterministic=true)
 

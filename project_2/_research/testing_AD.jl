@@ -3,6 +3,7 @@ using DrWatson
 using Lux
 using DRiL
 using Zygote
+using Enzyme
 using WGLMakie
 WGLMakie.activate!()
 # using CairoMakie
@@ -20,14 +21,12 @@ env = MonitorWrapperEnv(env, stats_window_size)
 env = NormalizeWrapperEnv(env, gamma=alg.gamma)
 
 policy = ActorCriticPolicy(observation_space(env), action_space(env))
-agent = ActorCriticAgent(policy; verbose=2,
-    log_dir=logdir("mountaincar_test", "normalized_monitored_run"))
-DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, ["env/ep_rew_mean", "train/loss"])
-@time learn_stats = learn!(agent, env, alg; max_steps=100_000)
-## this seems ok, we get some shorter episodes
+agent = ActorCriticAgent(policy; verbose=2, n_steps=128)
+@time learn_stats = learn!(agent, env, alg, AutoEnzyme(); max_steps=20_000)
 
 
-single_env = MountainCarEnv()
-obs, actions, rewards = collect_trajectory(agent, single_env; norm_env=env)
-fig_traj = plot_trajectory(MountainCarEnv(), obs, actions, rewards)
-plot_trajectory_interactive(MountainCarEnv(), obs, actions, rewards)
+##
+
+
+
+

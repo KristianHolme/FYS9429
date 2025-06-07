@@ -32,18 +32,18 @@ end
 function sample_hyperparams(rng::AbstractRNG)
     return Dict{String,Any}(
         "gamma" => rand(rng, 0.96f0 .. 1f0),  # 0.85-0.99
-        "gae_lambda" => rand(rng, 0.8f0 .. 0.98f0),  # 0.9-1.0
+        "gae_lambda" => rand(rng, 0.7f0 .. 0.98f0),  # 0.9-1.0
         "clip_range" => rand(rng, 0.12f0 .. 0.35f0),  # 0.1-0.3
         "vf_coef" => rand(rng, 0.2f0 .. 0.8f0),  # 0.1-1.0
         "ent_coef" => rand(rng, 0f0 .. 0.01f0),  # 0.0-0.01
         "learning_rate" => 10^(rand(rng, -5.0f0 .. -3f0)),  # 
         "batch_size" => rand(rng, [32, 64, 128]),
         "n_steps" => rand(rng, [16, 32, 64, 128]),
-        "epochs" => rand(rng, [5, 10, 15, 20]),
-        "n_envs" => rand(rng, [2, 4, 8, 16]),
-        "log_std_init" => rand(rng, -1.0f0 .. 1.0f0),
+        "epochs" => rand(rng, [10, 20, 30]),
+        "n_envs" => rand(rng, [4, 8, 16, 32]),
+        # "log_std_init" => rand(rng, -1.0f0 .. 1.0f0),
         "normalizeWrapper" => rand(rng, [true, false]),
-        "scalingWrapper" => rand(rng, [true, false])
+        "scalingWrapper" => rand(rng, [false, false])
     )
 end
 
@@ -91,14 +91,6 @@ function get_alg(params::Dict)
     )
 end
 
-function get_policy(params::Dict)
-    return ActorCriticPolicy(observation_space(env), action_space(env), log_std_init=Float32(params["log_std_init"]))
-end
-
-function get_agent(params::Dict)
-    return ActorCriticAgent(get_policy(params), get_alg(params))
-end
-
 function evaluate_trained_agent(agent, env, n_episodes::Int=100)
     env = set_training(env, false)
     eval_stats = evaluate_agent(agent, env; n_eval_episodes=n_episodes)
@@ -120,7 +112,8 @@ function run_single_trial(params::Dict, experiment_name::String)
     env = create_env(params["environment"], params)
 
     # Create agent
-    policy = ActorCriticPolicy(observation_space(env), action_space(env), log_std_init=Float32(params["log_std_init"]))
+    # policy = ActorCriticPolicy(observation_space(env), action_space(env), log_std_init=Float32(params["log_std_init"]))
+    policy = ActorCriticPolicy(observation_space(env), action_space(env))
     agent = ActorCriticAgent(
         policy;
         learning_rate=Float32(params["learning_rate"]),
@@ -208,7 +201,7 @@ function analyze_results(experiment_name::String, environment::String="Pendulum"
             n_envs=first(group.n_envs),
             normalizeWrapper=first(group.normalizeWrapper),
             scalingWrapper=first(group.scalingWrapper),
-            log_std_init=first(group.log_std_init),
+            # log_std_init=first(group.log_std_init),
 
             # Aggregated results
             mean_return=mean(group.eval_return),
@@ -229,7 +222,7 @@ function analyze_results(experiment_name::String, environment::String="Pendulum"
     @info "Best configuration:"
     @info "  Mean return: $(round(best_config.mean_return, digits=3)) ± $(round(best_config.std_return, digits=3))"
     @info "  Hyperparameters:"
-    for param in [:gamma, :gae_lambda, :clip_range, :vf_coef, :ent_coef, :learning_rate, :batch_size, :n_steps, :epochs, :log_std_init]
+    for param in [:gamma, :gae_lambda, :clip_range, :vf_coef, :ent_coef, :learning_rate, :batch_size, :n_steps, :epochs]
         @info "    $param: $(best_config[param])"
     end
 
@@ -240,7 +233,7 @@ function get_best_hyperparams(experiment_name::String, environment::String="Pend
     _, best_config = analyze_results(experiment_name, environment)
 
     params = Dict{String,Any}()
-    for param in [:gamma, :gae_lambda, :clip_range, :vf_coef, :ent_coef, :learning_rate, :batch_size, :n_steps, :epochs, :n_envs, :log_std_init]
+    for param in [:gamma, :gae_lambda, :clip_range, :vf_coef, :ent_coef, :learning_rate, :batch_size, :n_steps, :epochs, :n_envs]
         params[string(param)] = best_config[param]
     end
 
