@@ -1,4 +1,4 @@
-using DRiL
+using DRiL: Box
 using Random
 
 """
@@ -14,8 +14,8 @@ A simple 1D goal-reaching environment where:
 mutable struct GoalReachingEnv <: AbstractEnv
     player_position::Float32
     goal_position::Float32
-    observation_space::UniformBox{Float32}
-    action_space::UniformBox{Float32}
+    observation_space::Box{Float32}
+    action_space::Box{Float32}
     step_count::Int
     max_steps::Int
     _terminated::Bool
@@ -26,9 +26,9 @@ mutable struct GoalReachingEnv <: AbstractEnv
 
     function GoalReachingEnv(max_steps::Int=200, rng::Random.AbstractRNG=Random.Xoshiro())
         # Observation: [player_position, goal_position], both in (-1, 1)
-        obs_space = UniformBox{Float32}(-1.0f0, 1.0f0, (2,))
+        obs_space = Box{Float32}([-1.0f0, -1.0f0], [1.0f0, 1.0f0], (2,))
         # Action: continuous in (-1, 1)
-        act_space = UniformBox{Float32}(-1.0f0, 1.0f0, (1,))
+        act_space = Box{Float32}([-1.0f0], [1.0f0], (1,))
 
         new(0.0f0, 0.0f0, obs_space, act_space, 0, max_steps, false, false, 0.0f0, Dict{String,Any}(), rng)
     end

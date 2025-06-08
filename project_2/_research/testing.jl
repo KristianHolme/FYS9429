@@ -104,7 +104,7 @@ function (policy::MyACPolicy)(x, ps, st)
     return action_mean, value
 end
 
-function predict(policy::MyACPolicy, x, ps, st)
+function predict_actions(policy::MyACPolicy, x, ps, st)
     feats = policy.feature_extractor(x, ps.feature_extractor, st.feature_extractor)
     action_mean = policy.actor_head(feats, ps.actor_head, st.actor_head)
     return action_mean
@@ -158,7 +158,7 @@ feats
 
 obs = rand(Float32, 3, 4)
 
-actions, st = DRiL.predict(pend_policy, obs, ps, st)
+actions, st = DRiL.predict_actions(pend_policy, obs, ps, st)
 
 means = rand(1, 1)
 std = rand(1, 1)
