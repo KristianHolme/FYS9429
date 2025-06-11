@@ -31,9 +31,7 @@ pendenv = MonitorWrapperEnv(pendenv, stats_window_size)
 pendenv = NormalizeWrapperEnv(pendenv, gamma=alg.gamma)
 
 pendpolicy = ActorCriticPolicy(observation_space(pendenv), action_space(pendenv))
-pendagent = ActorCriticAgent(pendpolicy; verbose=2, n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=20,
-    log_dir=logdir("pendulum_test", "normalized_monitored_run"))
-DRiL.TensorBoardLogger.write_hparams!(pendagent.logger, alg, pendagent, ["env/ep_rew_mean", "train/loss"])
+pendagent = ActorCriticAgent(pendpolicy; verbose=2, n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=20)
 
 ##
 
@@ -58,6 +56,8 @@ myloss2(ps)
 
 
 grads = Zygote.gradient(myloss2, ps)
+grads[1].actor_head
+
 
 ##
 function calculate_log_probs(action_mean, log_std, action)
