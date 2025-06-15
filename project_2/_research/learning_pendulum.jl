@@ -21,9 +21,9 @@ pendagent = ActorCriticAgent(pendpolicy; verbose=2, n_steps=128, batch_size=128,
     log_dir=logdir("pendulum_test", "normalized_monitored_run"))
 DRiL.TensorBoardLogger.write_hparams!(pendagent.logger, alg, pendagent, ["env/ep_rew_mean", "train/loss"])
 ##
-learn_stats = learn!(pendagent, pendenv, alg; max_steps=5_000)
+learn_stats = learn!(pendagent, pendenv, alg; max_steps=100_000)
 ##
-single_env = PendulumEnv()
+single_env = PendulumEnv() |> ScalingWrapperEnv
 obs, actions, rewards = collect_trajectory(pendagent, single_env; norm_env=pendenv)
 actions
 sum(rewards)
