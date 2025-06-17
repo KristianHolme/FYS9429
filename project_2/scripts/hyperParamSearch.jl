@@ -29,22 +29,39 @@ end
 # HYPERPARAMETER SAMPLING
 # =============================================================================
 
-function sample_hyperparams(rng::AbstractRNG)
-    return Dict{String,Any}(
-        "gamma" => rand(rng, 0.96f0 .. 1f0),  # 0.85-0.99
-        "gae_lambda" => rand(rng, 0.7f0 .. 0.98f0),  # 0.9-1.0
-        "clip_range" => rand(rng, 0.12f0 .. 0.35f0),  # 0.1-0.3
-        "vf_coef" => rand(rng, 0.2f0 .. 0.8f0),  # 0.1-1.0
-        "ent_coef" => rand(rng, 0f0 .. 0.01f0),  # 0.0-0.01
-        "learning_rate" => 10^(rand(rng, -5.0f0 .. -3f0)),  # 
+function sample_hyperparams(rng::AbstractRNG, environment::String="Pendulum")
+    # Base hyperparameters
+    base_params = Dict{String,Any}(
+        "gamma" => rand(rng, 0.96f0 .. 1f0),
+        "gae_lambda" => rand(rng, 0.7f0 .. 0.98f0),
+        "clip_range" => rand(rng, 0.12f0 .. 0.35f0),
+        "vf_coef" => rand(rng, 0.2f0 .. 0.8f0),
+        "ent_coef" => rand(rng, 0f0 .. 0.01f0),
+        "learning_rate" => 10^(rand(rng, -5.0f0 .. -3f0)),
         "batch_size" => rand(rng, [32, 64, 128]),
         "n_steps" => rand(rng, [16, 32, 64, 128]),
         "epochs" => rand(rng, [10, 20, 30]),
         "n_envs" => rand(rng, [4, 8, 16, 32]),
-        # "log_std_init" => rand(rng, -1.0f0 .. 1.0f0),
         "normalizeWrapper" => rand(rng, [true, false]),
-        "scalingWrapper" => rand(rng, [false, false])
+        "scalingWrapper" => rand(rng, [false])  # Generally not recommended
     )
+    
+    # Environment-specific adjustments
+    if environment == "MountainCar" || environment == "Acrobot"
+        # These environments are sparse reward, need longer episodes
+        base_params["gamma"] = rand(rng, 0.98f0 .. 1f0)  # Higher gamma for sparse rewards
+        base_params["gae_lambda"] = rand(rng, 0.85f0 .. 0.98f0)
+        # Higher entropy for exploration in sparse reward environments
+        base_params["ent_coef"] = rand(rng, 0.001f0 .. 0.05f0)
+    elseif environment == "CartPole"
+        # CartPole has discrete actions and is relatively easy
+        base_params["ent_coef"] = rand(rng, 0f0 .. 0.005f0)  # Lower entropy needed
+    elseif environment == "Pendulum" || environment == "MountainCarContinuous"
+        # Continuous control environments
+        base_params["ent_coef"] = rand(rng, 0f0 .. 0.01f0)
+    end
+    
+    return base_params
 end
 
 # =============================================================================
@@ -56,11 +73,15 @@ function create_single_environment(env_type::String, params::Dict)
     base_env = if env_type == "Pendulum"
         PendulumEnv()
     elseif env_type == "MountainCar"
-        MountainCarEnv()
+        MountainCarEnv()  # Discrete version
+    elseif env_type == "MountainCarContinuous"
+        MountainCarContinuousEnv()
     elseif env_type == "CartPole"
         CartPoleEnv()
+    elseif env_type == "Acrobot"
+        AcrobotEnv()
     else
-        error("Unknown environment type: $env_type")
+        error("Unknown environment type: $env_type. Available: Pendulum, MountainCar, MountainCarContinuous, CartPole, Acrobot")
     end
 
     # Apply scaling wrapper if requested
@@ -72,7 +93,7 @@ function create_single_environment(env_type::String, params::Dict)
 end
 
 function create_env(env_type::String, params::Dict)
-    envs = [create_single_environment(params["environment"], params) for _ in 1:params["n_envs"]]
+    envs = [create_single_environment(env_type, params) for _ in 1:params["n_envs"]]
     env = MultiThreadedParallelEnv(envs)
     env = MonitorWrapperEnv(env, 50)
     if params["normalizeWrapper"]
@@ -152,7 +173,7 @@ function run_hyperparameter_search(config::SearchConfig=SearchConfig())
 
     @showprogress @threads for trial in 1:config.n_trials
         # Sample hyperparameters
-        params = sample_hyperparams(rng)
+        params = sample_hyperparams(rng, config.environment)
         params["trial_id"] = trial
         params["max_steps_per_trial"] = Int(config.max_steps_per_trial)
         params["environment"] = config.environment
@@ -265,10 +286,21 @@ function main(; n_trials::Int=50, max_steps_per_trial::Int=30_000, experiment_na
 end
 
 # =============================================================================
-# EXAMPLE USAGE
+# USAGE EXAMPLES
 # =============================================================================
 
-# Quick test with Pendulum: df, best_config = main(n_trials=5, max_steps_per_trial=5_000, environment="Pendulum")
-# Quick test with MountainCar: df, best_config = main(n_trials=5, max_steps_per_trial=5_000, environment="MountainCar")
-# Full search: df, best_config = main(n_trials=256, max_steps_per_trial=100_000, environment="MountainCar")
-# Get best params: get_best_hyperparams("your_experiment_name", "MountainCar")
+# List all available environments
+# print_environment_info()
+
+# Single environment searches:
+# df, best_config = main(n_trials=5, max_steps_per_trial=5_000, environment="Pendulum")
+# df, best_config = main(n_trials=5, max_steps_per_trial=5_000, environment="MountainCar")
+# df, best_config = main(n_trials=5, max_steps_per_trial=10_000, environment="Acrobot")
+# df, best_config = main(n_trials=5, max_steps_per_trial=5_000, environment="CartPole")
+# df, best_config = main(n_trials=5, max_steps_per_trial=10_000, environment="MountainCarContinuous")
+
+# Full hyperparameter search for production:
+# df, best_config = main(n_trials=256, max_steps_per_trial=100_000, environment="MountainCar")
+
+# Get best hyperparameters from completed search:
+# best_params = get_best_hyperparams("your_experiment_name", "MountainCar")
