@@ -14,10 +14,9 @@ ClassicControlEnvironments.plot(env.problem)
 ClassicControlEnvironments.interactive_viz(env)
 
 ##
-stats_window_size = 50
 alg = PPO()
 acrobotenv = BroadcastedParallelEnv([AcrobotEnv() for _ in 1:8])
-acrobotenv = MonitorWrapperEnv(acrobotenv, stats_window_size)
+acrobotenv = MonitorWrapperEnv(acrobotenv)
 acrobotenv = NormalizeWrapperEnv(acrobotenv, gamma=alg.gamma)
 
 acrobotpolicy = ActorCriticPolicy(observation_space(acrobotenv), action_space(acrobotenv))
