@@ -1,13 +1,7 @@
 using DrWatson
 @quickactivate :project_2
-using Lux
 using DRiL
-using Zygote
 using WGLMakie
-WGLMakie.activate!()
-# using CairoMakie
-using Statistics
-using LinearAlgebra
 using ClassicControlEnvironments
 ##
 alg = PPO(;ent_coef=0.1f0)

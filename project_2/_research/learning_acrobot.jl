@@ -3,16 +3,6 @@ using DrWatson
 using DRiL
 using ClassicControlEnvironments
 using WGLMakie
-using Zygote
-WGLMakie.activate!()
-##
-env = AcrobotEnv()
-##
-# using CairoMakie
-# CairoMakie.activate!()
-ClassicControlEnvironments.plot(env.problem)
-ClassicControlEnvironments.interactive_viz(env)
-
 ##
 alg = PPO()
 acrobotenv = BroadcastedParallelEnv([AcrobotEnv() for _ in 1:8])
