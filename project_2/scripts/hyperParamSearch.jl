@@ -30,6 +30,30 @@ end
 # =============================================================================
 
 function sample_hyperparams(rng::AbstractRNG, environment::String="Pendulum")
+    # Sample n_steps and n_envs first
+    n_steps = rand(rng, [16, 32, 64, 128])
+    n_envs = rand(rng, [4, 8, 16, 32])
+    
+    # Calculate total buffer size
+    total_buffer_size = n_steps * n_envs
+    
+    # Sample batch_size ensuring it's <= total_buffer_size
+    possible_batch_sizes = [32, 64, 128, 256]
+    valid_batch_sizes = filter(bs -> bs <= total_buffer_size, possible_batch_sizes)
+    
+    # If no valid batch sizes, use smaller options
+    if isempty(valid_batch_sizes)
+        valid_batch_sizes = [16, 32]
+        valid_batch_sizes = filter(bs -> bs <= total_buffer_size, valid_batch_sizes)
+    end
+    
+    # Ensure we always have at least one valid option
+    if isempty(valid_batch_sizes)
+        valid_batch_sizes = [min(16, total_buffer_size)]
+    end
+    
+    batch_size = rand(rng, valid_batch_sizes)
+    
     # Base hyperparameters
     base_params = Dict{String,Any}(
         "gamma" => rand(rng, 0.96f0 .. 1f0),
@@ -38,10 +62,10 @@ function sample_hyperparams(rng::AbstractRNG, environment::String="Pendulum")
         "vf_coef" => rand(rng, 0.2f0 .. 0.8f0),
         "ent_coef" => rand(rng, 0f0 .. 0.01f0),
         "learning_rate" => 10^(rand(rng, -5.0f0 .. -3f0)),
-        "batch_size" => rand(rng, [32, 64, 128]),
-        "n_steps" => rand(rng, [16, 32, 64, 128]),
+        "batch_size" => batch_size,
+        "n_steps" => n_steps,
         "epochs" => rand(rng, [10, 20, 30]),
-        "n_envs" => rand(rng, [4, 8, 16, 32]),
+        "n_envs" => n_envs,
         "normalizeWrapper" => rand(rng, [true, false]),
         "scalingWrapper" => rand(rng, [false])  # Generally not recommended
     )
@@ -150,7 +174,7 @@ function run_single_trial(params::Dict, experiment_name::String)
     DRiL.TensorBoardLogger.write_hparams!(agent.logger, params, ["env/ep_rew_mean", "env/ep_len_mean", "train/loss"])
     # Train
     t_start = time()
-    learn!(agent, env, alg; max_steps=Int(params["max_steps_per_trial"]))
+    learn!(agent, env, alg, Int(params["max_steps_per_trial"]))
     t_end = time()
     elapsed_time = t_end - t_start
     # Evaluate
