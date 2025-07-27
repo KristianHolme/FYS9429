@@ -21,7 +21,7 @@ roll_buffer = RolloutBuffer(observation_space(normenv), action_space(normenv), a
 
 
 function run_env(env, agent, roll_buffer)
-    fps = DRiL.collect_rollouts!(roll_buffer, agent, env)
+    fps = DRiL.collect_rollout!(roll_buffer, agent, env)
 end
 
 run_env(multenv, agent, roll_buffer)

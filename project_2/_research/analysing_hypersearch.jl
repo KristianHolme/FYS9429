@@ -19,7 +19,7 @@ policy = ActorCriticPolicy(observation_space(env), action_space(env))
 agent = ActorCriticAgent(policy; verbose=2, n_steps=best_config[:n_steps], learning_rate=T(best_config[:learning_rate]), epochs=best_config[:epochs],
     log_dir="logs/working_tests/best_config", batch_size=best_config[:batch_size])
 alg = PPO(; ent_coef=T(best_config[:ent_coef]), vf_coef=T(best_config[:vf_coef]), gamma=T(best_config[:gamma]), gae_lambda=T(best_config[:gae_lambda]))
-DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, ["env/avg_step_rew", "train/loss"])
+DRiL.TensorBoardLogger.write_hparams!(agent.logger, DRiL.get_hparams(alg), ["env/avg_step_rew", "train/loss"])
 learn_stats = learn!(agent, env, alg; max_steps=100_000)
 ##
 using JLD2

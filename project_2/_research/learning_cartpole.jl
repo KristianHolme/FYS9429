@@ -12,7 +12,7 @@ cartpoleenv = NormalizeWrapperEnv(cartpoleenv, gamma=alg.gamma)
 cartpolepolicy = ActorCriticPolicy(observation_space(cartpoleenv), action_space(cartpoleenv))
 cartpoleagent = ActorCriticAgent(cartpolepolicy; verbose=2, n_steps=128, batch_size=128, learning_rate=3f-4, epochs=10,
     log_dir=logdir("cartpole_test", "normalized_monitored_run"))
-DRiL.TensorBoardLogger.write_hparams!(cartpoleagent.logger, alg, cartpoleagent, ["env/ep_rew_mean", "train/loss"])
+DRiL.TensorBoardLogger.write_hparams!(cartpoleagent.logger, DRiL.get_hparams(alg), ["env/ep_rew_mean", "train/loss"])
 ## train agent
 learn_stats = learn!(cartpoleagent, cartpoleenv, alg; max_steps=100_000)
 ## collect trajectory

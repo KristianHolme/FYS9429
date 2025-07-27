@@ -41,7 +41,7 @@ vec(logprobs - new_logprobs)
 n_steps = 7
 n_envs = env.n_envs
 roll_buffer = RolloutBuffer(observation_space(env), action_space(env), alg.gae_lambda, alg.gamma, n_steps, n_envs)
-DRiL.collect_rollouts!(roll_buffer, agent, env)
+DRiL.collect_rollout!(roll_buffer, agent, env)
 obs = roll_buffer.observations
 act = roll_buffer.actions
 logprobs = roll_buffer.logprobs

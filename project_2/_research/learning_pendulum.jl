@@ -4,15 +4,16 @@ using DRiL
 using WGLMakie
 using ClassicControlEnvironments
 ##
-alg = PPO(; ent_coef=0f0, vf_coef=0.480177f0, gamma=0.990886f0, gae_lambda=0.85821f0, clip_range=0.132141f0)
+alg = PPO(; ent_coef=0f0, vf_coef=0.480177f0, gamma=0.990886f0, gae_lambda=0.85821f0, clip_range=0.132141f0,
+    n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=20)
 pendenv = BroadcastedParallelEnv([PendulumEnv() for _ in 1:8])
 pendenv = MonitorWrapperEnv(pendenv)
 pendenv = NormalizeWrapperEnv(pendenv, gamma=alg.gamma)
 
 pendpolicy = ActorCriticPolicy(observation_space(pendenv), action_space(pendenv))
-pendagent = ActorCriticAgent(pendpolicy; verbose=2, n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=20,
+pendagent = ActorCriticAgent(pendpolicy, alg; verbose=2,
     log_dir=logdir("pendulum_test", "normalized_monitored_run"))
-DRiL.TensorBoardLogger.write_hparams!(pendagent.logger, alg, pendagent, ["env/ep_rew_mean", "train/loss"])
+DRiL.TensorBoardLogger.write_hparams!(pendagent.logger, DRiL.get_hparams(alg), ["env/ep_rew_mean", "train/loss"])
 ##
 learn_stats = learn!(pendagent, pendenv, alg; max_steps=100_000)
 ##

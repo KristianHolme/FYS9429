@@ -45,7 +45,7 @@ fig
 policy = ActorCriticPolicy(observation_space(env), action_space(env))
 agent = ActorCriticAgent(policy; verbose=2, n_steps=256, learning_rate=3f-4, epochs=20,
     log_dir=logdir("working_tests", "normalized_monitored_run"), batch_size=128)
-DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, ["env/avg_step_rew", "train/loss"])
+DRiL.TensorBoardLogger.write_hparams!(agent.logger, DRiL.get_hparams(alg), ["env/avg_step_rew", "train/loss"])
 learn_stats = learn!(agent, env, alg; max_steps=100_000)
 ##
 evaluate_agent(agent, env; show_progress=true)

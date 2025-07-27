@@ -177,7 +177,7 @@ agent = ActorCriticAgent(policy; verbose=2, n_steps=64)
 
 n_steps = 64
 roll_buffer = RolloutBuffer(observation_space(env), action_space(env), 0.97, 0.99, n_steps, env.n_envs)
-fps = DRiL.collect_rollouts!(roll_buffer, agent, env)
+fps = DRiL.collect_rollout!(roll_buffer, agent, env)
 DRiL.reset!(roll_buffer)
 trajectories = DRiL.collect_trajectories(agent, env, n_steps)
 
@@ -207,7 +207,7 @@ policy = ActorCriticPolicy(observation_space(env), action_space(env))
 agent = ActorCriticAgent(policy; verbose=2, n_steps=256, learning_rate=1f-3, epochs=10,
     log_dir="logs/working_tests/run", batch_size=64)
 alg = PPO(; ent_coef=0.01f0, vf_coef=0.5f0, gamma=0.9f0, gae_lambda=0.95f0)
-DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, ["env/avg_step_rew", "train/loss"])
+DRiL.TensorBoardLogger.write_hparams!(agent.logger, DRiL.get_hparams(alg), ["env/avg_step_rew", "train/loss"])
 learn_stats = learn!(agent, env, alg; max_steps=100_000)
 ##
 using JLD2

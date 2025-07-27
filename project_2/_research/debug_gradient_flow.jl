@@ -11,9 +11,9 @@ using ClassicControlEnvironments
 ##
 
 ps = rand(1:4, 2, 2, 3) .|> Float32
-log_std = Float32[0.1 0.2 ; 0.3 0.4]
+log_std = Float32[0.1 0.2; 0.3 0.4]
 
-actions = rand(Float32,2,2,3)
+actions = rand(Float32, 2, 2, 3)
 
 function myloss(ps)
     ds = DiagGaussian.(eachslice(ps, dims=ndims(ps)), Ref(log_std))
@@ -25,13 +25,14 @@ Zygote.gradient(myloss, ps)
 
 ##
 stats_window_size = 50
-alg = PPO(; ent_coef=0.00999f0, vf_coef=0.480177f0, gamma=0.990886f0, gae_lambda=0.85821f0, clip_range=0.132141f0)
+alg = PPO(; ent_coef=0.00999f0, vf_coef=0.480177f0, gamma=0.990886f0, gae_lambda=0.85821f0, clip_range=0.132141f0,
+    n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=20)
 pendenv = BroadcastedParallelEnv([PendulumEnv() |> ScalingWrapperEnv for _ in 1:8])
 pendenv = MonitorWrapperEnv(pendenv, stats_window_size)
 pendenv = NormalizeWrapperEnv(pendenv, gamma=alg.gamma)
 
 pendpolicy = ActorCriticPolicy(observation_space(pendenv), action_space(pendenv))
-pendagent = ActorCriticAgent(pendpolicy; verbose=2, n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=20)
+pendagent = ActorCriticAgent(pendpolicy, alg; verbose=2)
 
 ##
 
@@ -65,18 +66,18 @@ function calculate_log_probs(action_mean, log_std, action)
     # action_mean: mean vector
     # log_std: log standard deviation vector 
     # action: action vector
-    
+
     # Compute difference from mean
     diff = action .- action_mean
-    
+
     # Calculate log probability components
     log_2pi = Float32(log(2π))
     variance_term = sum(2 .* log_std)
     quadratic_term = sum((diff .* diff) ./ (2 .* exp.(2 .* log_std)))
-    
+
     # Sum components for final log probability
     log_prob = -0.5f0 * (log_2pi + variance_term + quadratic_term)
-    
+
     # Sum across action dimensions
     @assert log_prob isa Float32
     return log_prob
@@ -123,7 +124,9 @@ pendenv = MonitorWrapperEnv(pendenv, stats_window_size)
 pendenv = NormalizeWrapperEnv(pendenv, gamma=alg.gamma)
 
 pendpolicy = ActorCriticPolicy(observation_space(pendenv), action_space(pendenv))
-pendagent = ActorCriticAgent(pendpolicy; verbose=2, n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=2)
+alg = PPO(; ent_coef=0f0, vf_coef=0.480177f0, gamma=0.990886f0, gae_lambda=0.85821f0, clip_range=0.132141f0,
+    n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=2)
+pendagent = ActorCriticAgent(pendpolicy, alg; verbose=2)
 learn_stats = learn!(pendagent, pendenv, alg, AutoZygote(); max_steps=1025)
 ##
 single_env = PendulumEnv()
@@ -165,19 +168,19 @@ using MLUtils
 using ComponentArrays
 action_shp = size(action_space(pendenv))
 obs_shp = size(observation_space(pendenv))
-batch_size = pendagent.batch_size
+batch_size = alg.batch_size
 activation = tanh
 log_std = randn(Float32, action_shp...)
 model = Chain(FlattenLayer(), Dense(prod(obs_shp), 64, activation), Dense(64, 64, activation), Dense(64, prod(action_shp)), ReshapeLayer(action_shp))
 ps, st = Lux.setup(Random.MersenneTwister(42), model)
 train_state = Lux.Training.TrainState(model, ps, st, Adam())
 
-roll_buffer = RolloutBuffer(observation_space(pendenv), action_space(pendenv), alg.gae_lambda, alg.gamma, pendagent.n_steps, number_of_envs(pendenv))
-DRiL.collect_rollouts!(roll_buffer, pendagent, pendenv)
+roll_buffer = RolloutBuffer(observation_space(pendenv), action_space(pendenv), alg.gae_lambda, alg.gamma, alg.n_steps, number_of_envs(pendenv))
+DRiL.collect_rollout!(roll_buffer, pendagent, pendenv)
 data_loader = DataLoader((roll_buffer.observations, roll_buffer.actions,
-                roll_buffer.advantages, roll_buffer.returns,
-                roll_buffer.logprobs, roll_buffer.values),
-            batchsize=pendagent.batch_size, shuffle=true, parallel=true, rng=pendagent.rng)
+        roll_buffer.advantages, roll_buffer.returns,
+        roll_buffer.logprobs, roll_buffer.values),
+    batchsize=alg.batch_size, shuffle=true, parallel=true, rng=pendagent.rng)
 
 function myloss5(model, ps, st, batch_data)
     observations = batch_data[1]
@@ -211,11 +214,11 @@ obs_shp = size(observation_space(pendenv))
 pendpolicy = ActorCriticPolicy(observation_space(pendenv), action_space(pendenv))
 pendagent = ActorCriticAgent(pendpolicy; verbose=2, n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=2)
 roll_buffer = RolloutBuffer(observation_space(pendenv), action_space(pendenv), alg.gae_lambda, alg.gamma, pendagent.n_steps, number_of_envs(pendenv))
-DRiL.collect_rollouts!(roll_buffer, pendagent, pendenv)
+DRiL.collect_rollout!(roll_buffer, pendagent, pendenv)
 data_loader = DataLoader((roll_buffer.observations, roll_buffer.actions,
-                roll_buffer.advantages, roll_buffer.returns,
-                roll_buffer.logprobs, roll_buffer.values),
-            batchsize=pendagent.batch_size, shuffle=true, parallel=true, rng=pendagent.rng)
+        roll_buffer.advantages, roll_buffer.returns,
+        roll_buffer.logprobs, roll_buffer.values),
+    batchsize=pendagent.batch_size, shuffle=true, parallel=true, rng=pendagent.rng)
 train_state = pendagent.train_state
 function myloss6(policy, ps, st, batch_data)
     observations = batch_data[1]
@@ -303,11 +306,11 @@ obs_shp = size(observation_space(pendenv))
 pendpolicy = ActorCriticPolicy(observation_space(pendenv), action_space(pendenv))
 pendagent = ActorCriticAgent(pendpolicy; verbose=2, n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=2)
 roll_buffer = RolloutBuffer(observation_space(pendenv), action_space(pendenv), alg.gae_lambda, alg.gamma, pendagent.n_steps, number_of_envs(pendenv))
-DRiL.collect_rollouts!(roll_buffer, pendagent, pendenv)
+DRiL.collect_rollout!(roll_buffer, pendagent, pendenv)
 data_loader = DataLoader((roll_buffer.observations, roll_buffer.actions,
-                roll_buffer.advantages, roll_buffer.returns,
-                roll_buffer.logprobs, roll_buffer.values),
-            batchsize=pendagent.batch_size, shuffle=true, parallel=true, rng=pendagent.rng)
+        roll_buffer.advantages, roll_buffer.returns,
+        roll_buffer.logprobs, roll_buffer.values),
+    batchsize=pendagent.batch_size, shuffle=true, parallel=true, rng=pendagent.rng)
 
 train_state = pendagent.train_state
 function myloss9(policy, ps, st, batch_data)
@@ -418,13 +421,13 @@ function myloss12(policy, ps, st, batch_data)
     return loss, st, Dict()
 end
 roll_buffer = RolloutBuffer(observation_space(pendenv), action_space(pendenv), alg.gae_lambda, alg.gamma, pendagent.n_steps, number_of_envs(pendenv))
-DRiL.collect_rollouts!(roll_buffer, pendagent, pendenv)
+DRiL.collect_rollout!(roll_buffer, pendagent, pendenv)
 data_loader = DataLoader((roll_buffer.observations, roll_buffer.actions), batchsize=64, shuffle=true, parallel=true, rng=pendagent.rng)
 ##
 grads, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), myloss12, first(data_loader), train_state)
 grads.actor_head
 ##
-grads, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), myloss12, (roll_buffer.observations, roll_buffer.actions.*(1.f0 + eps(Float32))), train_state)
+grads, loss, stats, train_state = Lux.Training.compute_gradients(AutoZygote(), myloss12, (roll_buffer.observations, roll_buffer.actions .* (1.f0 + eps(Float32))), train_state)
 grads.actor_head
 ##
 roll_buffer.observations

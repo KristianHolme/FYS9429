@@ -10,7 +10,7 @@ using ClassicControlEnvironments
 using ProgressMeter
 ##
 stats_window_size = 50
-alg = PPO(; ent_coef=0.01f0, vf_coef=0.5f0, gamma=0.9999f0, gae_lambda=0.9f0, 
+alg = PPO(; ent_coef=0.01f0, vf_coef=0.5f0, gamma=0.9999f0, gae_lambda=0.9f0,
     clip_range=0.2f0,
     max_grad_norm=0.5f0,
 )
@@ -30,7 +30,7 @@ agent = ActorCriticAgent(policy; verbose=2)
 roll_buffer = RolloutBuffer(observation_space(broadcastedenv), action_space(broadcastedenv), alg.gae_lambda, alg.gamma, agent.n_steps, N_envs)
 
 function run_env(env, agent, roll_buffer)
-    fps = DRiL.collect_rollouts!(roll_buffer, agent, env)
+    fps = DRiL.collect_rollout!(roll_buffer, agent, env)
 end
 
 @time run_env(broadcastedenv, agent, roll_buffer)
@@ -40,7 +40,7 @@ end
 function benchmark_parallel_envs(N_envs_vec::Vector{Int}, n_runs::Int=20)
     broadcasted_fps = Float64[]
     multienv_fps = Float64[]
-    p = Progress(length(N_envs_vec)*n_runs*2)
+    p = Progress(length(N_envs_vec) * n_runs * 2)
     for N_envs in N_envs_vec
         broadcastedenv = BroadcastedParallelEnv([MountainCarEnv() |> ScalingWrapperEnv for _ in 1:N_envs])
         broadcastedenv = MonitorWrapperEnv(broadcastedenv, stats_window_size)

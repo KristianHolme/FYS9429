@@ -13,15 +13,16 @@ ClassicControlEnvironments.interactive_viz(env)
 
 ##
 stats_window_size = 50
-alg = PPO(; ent_coef=0.00999f0, vf_coef=0.480177f0, gamma=0.990886f0, gae_lambda=0.85821f0, clip_range=0.132141f0)
+alg = PPO(; ent_coef=0.00999f0, vf_coef=0.480177f0, gamma=0.990886f0, gae_lambda=0.85821f0, clip_range=0.132141f0,
+    n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=20)
 cartenv = BroadcastedParallelEnv([CartPoleEnv() |> ScalingWrapperEnv for _ in 1:8])
 cartenv = MonitorWrapperEnv(cartenv, stats_window_size)
 cartenv = NormalizeWrapperEnv(cartenv, gamma=alg.gamma)
 
 cartpolicy = ActorCriticPolicy(observation_space(cartenv), action_space(cartenv))
-cartagent = ActorCriticAgent(cartpolicy; verbose=2, n_steps=128, batch_size=128, learning_rate=1.95409f-4, epochs=20,
+cartagent = ActorCriticAgent(cartpolicy, alg; verbose=2,
     log_dir=logdir("cartpole_test", "normalized_monitored_run"))
-DRiL.TensorBoardLogger.write_hparams!(cartagent.logger, alg, cartagent, ["env/ep_rew_mean", "train/loss"])
+DRiL.TensorBoardLogger.write_hparams!(cartagent.logger, DRiL.get_hparams(alg), ["env/ep_rew_mean", "train/loss"])
 ##
 learn_stats = learn!(cartagent, cartenv, alg; max_steps=100_000)
 ##
@@ -41,10 +42,10 @@ plot_trajectory_interactive(CartPoleEnv(), obs, actions, rewards)
 trajectory = DRiL.Trajectory(observation_space(cartenv), action_space(cartenv))
 trajs = DRiL.collect_trajectories(cartagent, cartenv, 10)
 trajs[1].actions
-rollout_buffer = RolloutBuffer(observation_space(cartenv), action_space(cartenv), alg.gae_lambda, alg.gamma, cartagent.n_steps, number_of_envs(cartenv))
+rollout_buffer = RolloutBuffer(observation_space(cartenv), action_space(cartenv), alg.gae_lambda, alg.gamma, alg.n_steps, number_of_envs(cartenv))
 reset!(rollout_buffer)
 rollout_buffer.actions
-DRiL.collect_rollouts!(rollout_buffer, cartagent, cartenv)
+DRiL.collect_rollout!(rollout_buffer, cartagent, cartenv)
 rollout_buffer.observations
 rollout_buffer.actions
 
@@ -101,7 +102,7 @@ mountainenv = NormalizeWrapperEnv(mountainenv, gamma=alg.gamma)
 mountainpolicy = ActorCriticPolicy(observation_space(mountainenv), action_space(mountainenv))
 mountainagent = ActorCriticAgent(mountainpolicy; verbose=2, n_steps=32, batch_size=256, learning_rate=3f-4, epochs=20,
     log_dir=logdir("mountaincar_test", "normalized_monitored_run"))
-DRiL.TensorBoardLogger.write_hparams!(mountainagent.logger, alg, mountainagent, ["env/ep_rew_mean", "train/loss"])
+DRiL.TensorBoardLogger.write_hparams!(mountainagent.logger, DRiL.get_hparams(alg), ["env/ep_rew_mean", "train/loss"])
 
 
 @time learn!(mountainagent, mountainenv, alg; max_steps=100_000)

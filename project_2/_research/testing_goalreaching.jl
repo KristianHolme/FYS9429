@@ -11,11 +11,11 @@ using Random
 env = BroadcastedParallelEnv([GoalReachingEnv() for _ in 1:16])
 env = MonitorWrapperEnv(env)
 policy = ActorCriticPolicy(observation_space(env), action_space(env))
-agent = ActorCriticAgent(policy; verbose=2, n_steps=256, learning_rate=3f-4, epochs=10,
-    log_dir="logs/goalreaching/run", batch_size=64)
-alg = PPO(; ent_coef=0.005f0, vf_coef=0.5f0, gamma=0.99f0, gae_lambda=0.85f0)
-DRiL.TensorBoardLogger.write_hparams!(agent.logger, alg, agent, ["env/avg_step_rew", "train/loss"])
-@reset agent.learning_rate = 3f-5
+alg = PPO(; ent_coef=0.005f0, vf_coef=0.5f0, gamma=0.99f0, gae_lambda=0.85f0,
+    n_steps=256, learning_rate=3f-5, epochs=10, batch_size=64)
+agent = ActorCriticAgent(policy, alg; verbose=2,
+    log_dir="logs/goalreaching/run")
+DRiL.TensorBoardLogger.write_hparams!(agent.logger, DRiL.get_hparams(alg), ["env/avg_step_rew", "train/loss"])
 learn_stats = learn!(agent, env, alg; max_steps=500_000)
 ##
 single_env = GoalReachingEnv()
@@ -38,9 +38,9 @@ function optimal_action(obs)
     ppos = ppos[1]
     gpos = gpos[1]
     if ppos > gpos
-        return -(ppos-gpos)/(ppos+1)
+        return -(ppos - gpos) / (ppos + 1)
     else
-        return (gpos-ppos)/(1-ppos)
+        return (gpos - ppos) / (1 - ppos)
     end
 end
 ##
@@ -50,9 +50,9 @@ a = predict_actions(agent, o, deterministic=true)
 r = act!(single_env, a)
 
 ##
-n=500
-ppos = rand(Float32, n).*2 .- 1
-gpos = rand(Float32, n).*2 .- 1
+n = 500
+ppos = rand(Float32, n) .* 2 .- 1
+gpos = rand(Float32, n) .* 2 .- 1
 observations = [ppos gpos]'
 
 values = predict_values(agent, observations)
