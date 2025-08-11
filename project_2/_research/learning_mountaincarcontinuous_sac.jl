@@ -19,7 +19,11 @@ policy = ContinuousActorCriticPolicy(observation_space(env), action_space(env),
 agent = SACAgent(policy, alg; verbose=2, log_dir=logdir("mountaincar_sac_test", "normalized_monitored_run"))
 DRiL.TensorBoardLogger.write_hparams!(agent.logger, DRiL.get_hparams(alg), ["env/ep_rew_mean", "train/loss"])
 ##
-replay_buffer, training_stats = learn!(agent, env, alg, 50_000)
+agent, replay_buffer, training_stats = learn!(agent, env, alg, 50_000)
+##
+extrema(replay_buffer.rewards)
+actions = getindex.(replay_buffer.actions, 1)
+extrema(actions)
 ##
 single_env = MountainCarContinuousEnv()
 obs, actions, rewards = collect_trajectory(agent, single_env; norm_env=env, deterministic=true)
