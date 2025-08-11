@@ -19,7 +19,7 @@ using Base.Threads
 @kwdef struct SearchConfig
     n_trials::Int = 128
     max_steps_per_trial::Int = 100_000
-    experiment_name::String = "ppo_search_$(Dates.format(now(), "yyyy-mm-dd_HH-MM"))"
+    experiment_name::String = string(algorithm) * "_search_$(Dates.format(now(), "yyyy-mm-dd_HH-MM"))"
     n_seeds::Int = 5
     random_seed::Int = 42
     environment::Type = PendulumEnv    # Environment type as a type (e.g., PendulumEnv)
