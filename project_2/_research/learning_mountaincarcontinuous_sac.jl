@@ -6,16 +6,16 @@ using ClassicControlEnvironments
 using Lux: relu
 using Zygote
 ##
-# ent_coef = FixedEntropyCoefficient(0.1f0)
-ent_coef = AutoEntropyCoefficient()
+ent_coef = FixedEntropyCoefficient(0.051f0)
+# ent_coef = AutoEntropyCoefficient()
 alg = SAC(; ent_coef, buffer_capacity=50_000, batch_size=512, train_freq=32, gradient_steps=32,
     gamma=0.9999f0, tau=0.01f0, start_steps=0)
 env = BroadcastedParallelEnv([MountainCarContinuousEnv() for _ in 1:1])
 env = MonitorWrapperEnv(env)
 env = NormalizeWrapperEnv(env, gamma=alg.gamma)
 
-policy = ContinuousActorCriticPolicy(observation_space(env), action_space(env),
-    activation=relu, critic_type=QCritic(), log_std_init=1f0)
+policy = SACPolicy(observation_space(env), action_space(env);
+    log_std_init=-0.22f0, hidden_dims=[64, 64])
 agent = SACAgent(policy, alg; verbose=2, log_dir=logdir("mountaincar_sac_test", "normalized_monitored_run"))
 DRiL.TensorBoardLogger.write_hparams!(agent.logger, DRiL.get_hparams(alg), ["env/ep_rew_mean", "train/loss"])
 ##
@@ -34,15 +34,16 @@ vec_actions = getindex.(actions, 1)
 vec_pos = getindex.(obs, 1)
 vec_vel = getindex.(obs, 2)
 fig = Figure()
-ax = Axis(fig[1, 1])
+ax = Axis(fig[1, 1], xlabel="position", ylabel="action")
 lines!(ax, vec_pos[1:length(vec_actions)], vec_actions)
-ax2 = Axis(fig[2, 1])
+ax2 = Axis(fig[2, 1], xlabel="velocity", ylabel="action")
 lines!(ax2, vec_vel[1:length(vec_actions)], vec_actions)
 fig
 ## action histogram
 hist(vec_actions)
 ##
-plot_trajectory_interactive(single_env, obs, actions, rewards)
+fig, _ = plot_trajectory_interactive(single_env, obs, actions, rewards)
+display(fig)
 ##
 ps = agent.train_state.parameters
 ps.log_std
