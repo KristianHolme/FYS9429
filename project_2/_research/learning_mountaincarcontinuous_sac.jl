@@ -17,7 +17,7 @@ env = NormalizeWrapperEnv(env, gamma=alg.gamma)
 policy = SACPolicy(observation_space(env), action_space(env);
     log_std_init=-0.22f0, hidden_dims=[64, 64])
 agent = SACAgent(policy, alg; verbose=2, log_dir=logdir("mountaincar_sac_test", "normalized_monitored_run"))
-DRiL.TensorBoardLogger.write_hparams!(agent.logger, DRiL.get_hparams(alg), ["env/ep_rew_mean", "train/loss"])
+DRiL.TensorBoardLogger.write_hparams!(agent.logger, DRiL.get_hparams(alg), ["env/ep_rew_mean", "train/actor_loss", "train/critic_loss", "train/entropy_loss"])
 ##
 agent, replay_buffer, training_stats = learn!(agent, env, alg, 50_000)
 ##
