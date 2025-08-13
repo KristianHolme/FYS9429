@@ -16,21 +16,37 @@ using Base.Threads
 # SEARCH CONFIGURATION
 # =============================================================================
 
-@kwdef struct SearchConfig
-    n_trials::Int = 128
-    max_steps_per_trial::Int = 100_000
-    experiment_name::String = string(algorithm) * "_search_$(Dates.format(now(), "yyyy-mm-dd_HH-MM"))"
-    n_seeds::Int = 5
-    random_seed::Int = 42
-    environment::Type = PendulumEnv    # Environment type as a type (e.g., PendulumEnv)
-    algorithm::Type{<:DRiL.AbstractAlgorithm} = PPO
+struct SearchConfig
+    n_trials::Int
+    max_steps_per_trial::Int
+    experiment_name::String
+    n_seeds::Int
+    random_seed::Int
+    environment::Type{<:AbstractEnv}
+    algorithm::Type{<:DRiL.AbstractAlgorithm}
+end
+
+function SearchConfig(;
+    experiment_name=nothing,
+    n_trials=128,
+    max_steps_per_trial=100_000,
+    n_seeds=5,
+    random_seed=42,
+    environment=PendulumEnv,
+    algorithm=PPO,
+)
+    if isnothing(experiment_name)
+        experiment_name = string(algorithm) * "_search_$(Dates.format(now(), "yyyy-mm-dd_HH-MM"))"
+    end
+    return SearchConfig(n_trials, max_steps_per_trial, experiment_name, n_seeds, random_seed,
+        environment, algorithm)
 end
 
 # =============================================================================
 # HYPERPARAMETER SAMPLING
 # =============================================================================
 
-function sample_hyperparams(::Type{PPO}, rng::AbstractRNG, env_type::Type=PendulumEnv)
+function sample_hyperparams(alg_type::Type{PPO}, rng::AbstractRNG, env_type::Type=PendulumEnv)
     # Sample n_steps and n_envs first
     n_steps = rand(rng, [16, 32, 64, 128])
     n_envs = rand(rng, [4, 8, 16, 32])
@@ -70,21 +86,21 @@ function sample_hyperparams(::Type{PPO}, rng::AbstractRNG, env_type::Type=Pendul
     )
 
     # Apply env-specific adjustments via multiple dispatch
-    adjust_ppo_params!(params, env_type, rng)
+    adjust_params!(params, env_type, alg_type, rng)
     return params
 end
 
 # Default: no changes
-adjust_ppo_params!(params::Dict, ::Type, rng::AbstractRNG) = params
+adjust_params!(params::Dict, ::Type{<:AbstractEnv}, ::Type{<:AbstractAlgorithm}, rng::AbstractRNG) = params
 
 # Sparse reward envs
-function adjust_ppo_params!(params::Dict, ::Type{MountainCarEnv}, rng::AbstractRNG)
+function adjust_params!(params::Dict, ::Type{MountainCarEnv}, ::Type{PPO}, rng::AbstractRNG)
     params["gamma"] = rand(rng, 0.98f0 .. 1f0)
     params["gae_lambda"] = rand(rng, 0.85f0 .. 0.98f0)
     params["ent_coef"] = rand(rng, 0.001f0 .. 0.05f0)
     return params
 end
-function adjust_ppo_params!(params::Dict, ::Type{AcrobotEnv}, rng::AbstractRNG)
+function adjust_params!(params::Dict, ::Type{AcrobotEnv}, ::Type{PPO}, rng::AbstractRNG)
     params["gamma"] = rand(rng, 0.98f0 .. 1f0)
     params["gae_lambda"] = rand(rng, 0.85f0 .. 0.98f0)
     params["ent_coef"] = rand(rng, 0.001f0 .. 0.05f0)
@@ -92,27 +108,29 @@ function adjust_ppo_params!(params::Dict, ::Type{AcrobotEnv}, rng::AbstractRNG)
 end
 
 # Easy discrete env
-function adjust_ppo_params!(params::Dict, ::Type{CartPoleEnv}, rng::AbstractRNG)
+function adjust_params!(params::Dict, ::Type{CartPoleEnv}, ::Type{PPO}, rng::AbstractRNG)
     params["ent_coef"] = rand(rng, 0f0 .. 0.005f0)
     return params
 end
 
 # Continuous control envs
-function adjust_ppo_params!(params::Dict, ::Type{PendulumEnv}, rng::AbstractRNG)
+function adjust_params!(params::Dict, ::Type{PendulumEnv}, ::Type{PPO}, rng::AbstractRNG)
     params["ent_coef"] = rand(rng, 0f0 .. 0.01f0)
     return params
 end
-function adjust_ppo_params!(params::Dict, ::Type{MountainCarContinuousEnv}, rng::AbstractRNG)
+function adjust_params!(params::Dict, ::Type{MountainCarContinuousEnv}, ::Type{PPO}, rng::AbstractRNG)
     params["ent_coef"] = rand(rng, 0f0 .. 0.01f0)
     return params
 end
 
-function sample_hyperparams(::Type{SAC}, rng::AbstractRNG, env_type::Type=PendulumEnv)
+
+
+function sample_hyperparams(alg_type::Type{SAC}, rng::AbstractRNG, env_type::Type=PendulumEnv)
     # SAC-specific sampling (continuous control)
     n_envs = rand(rng, [1, 2, 4, 8])
     params = Dict{String,Any}(
         "algorithm" => "SAC",
-        "gamma" => rand(rng, 0.96f0 .. 0.995f0),
+        "gamma" => rand(rng, 0.96f0 .. 0.9999f0),
         "learning_rate" => 10^(rand(rng, -5.0f0 .. -3f0)),
         "batch_size" => rand(rng, [64, 128, 256, 512]),
         "n_envs" => n_envs,
@@ -122,13 +140,29 @@ function sample_hyperparams(::Type{SAC}, rng::AbstractRNG, env_type::Type=Pendul
         "train_freq" => rand(rng, [n_envs, 2 * n_envs, 4 * n_envs, 8 * n_envs]),
         "gradient_steps" => rand(rng, [1, 2, 4, -1]),
         "target_update_interval" => rand(rng, [1, 5, 10]),
-        # Entropy coefficient mode for logging (actual object is built in get_alg)
-        "ent_coef_mode" => rand(rng, ["auto", "fixed"]),
-        # If fixed mode is sampled, pick a value; otherwise value is ignored
-        "ent_coef" => rand(rng, 0.05f0 .. 0.5f0),
         "normalizeWrapper" => rand(rng, [true, false]),
         "scalingWrapper" => rand(rng, [false])
     )
+    ent_coef_num = rand(rng, [0.05f0, 0.1f0, 0.2f0, 0.3f0, 0.4f0, 0.5f0])
+    ent_coef = rand(rng, [AutoEntropyCoefficient(initial_value=ent_coef_num), FixedEntropyCoefficient(ent_coef_num)])
+    params["ent_coef"] = ent_coef
+    adjust_params!(params, env_type, alg_type, rng)
+    return params
+end
+
+function adjust_params!(params::Dict, ::Type{MountainCarContinuousEnv}, ::Type{SAC}, rng::AbstractRNG)
+    ent_coef_num = rand(rng, 0.01f0 .. 0.1f0)
+    ent_coef = rand(rng, [AutoEntropyCoefficient(initial_value=ent_coef_num), FixedEntropyCoefficient(ent_coef_num)])
+    params["ent_coef"] = ent_coef
+    params["log_std_init"] = rand(rng, -1f0 .. 0.5f0)
+    params["hidden_dims"] = [64, 64]
+    params["buffer_capacity"] = 50_000
+    params["start_steps"] = 0
+    params["tau"] = 0.01f0
+    params["train_freq"] = 32
+    params["gradient_steps"] = 32
+    params["target_update_interval"] = 1
+    params["gamma"] = 0.9999f0
     return params
 end
 
@@ -182,7 +216,6 @@ function get_alg(::Type{PPO}, params::Dict)
 end
 
 function get_alg(::Type{SAC}, params::Dict)
-    ent_coef_obj = params["ent_coef_mode"] == "auto" ? AutoEntropyCoefficient() : FixedEntropyCoefficient(Float32(params["ent_coef"]))
     return SAC(
         learning_rate=Float32(params["learning_rate"]),
         buffer_capacity=Int(params["buffer_capacity"]),
@@ -192,7 +225,7 @@ function get_alg(::Type{SAC}, params::Dict)
         gamma=Float32(params["gamma"]),
         train_freq=Int(params["train_freq"]),
         gradient_steps=Int(params["gradient_steps"]),
-        ent_coef=ent_coef_obj,
+        ent_coef=params["ent_coef"],
         target_update_interval=Int(params["target_update_interval"])
     )
 end
@@ -212,7 +245,7 @@ function create_policy(::Type{SAC}, env, params::Dict)
     if !(action_space(env) isa Box)
         error("SAC requires a continuous action space. Environment $(params["environment"]) is not supported.")
     end
-    return ContinuousActorCriticPolicy(observation_space(env), action_space(env); critic_type=QCritic())
+    return SACPolicy(observation_space(env), action_space(env); log_std_init=Float32(params["log_std_init"]), hidden_dims=Int.(params["hidden_dims"]))
 end
 
 function create_agent(::Type{PPO}, policy, alg, params::Dict, experiment_name::String)
@@ -245,7 +278,14 @@ function run_single_trial(alg_type::Type{<:DRiL.AbstractAlgorithm}, env_type::Ty
     policy = create_policy(alg_type, env, params)
     agent = create_agent(alg_type, policy, alg, params, experiment_name)
     if !isnothing(agent.logger)
-        DRiL.TensorBoardLogger.write_hparams!(agent.logger, params, get_hparam_metrics(alg_type))
+        hparams = copy(params)
+        if haskey(hparams, "ent_coef") && hparams["ent_coef"] isa AbstractEntropyCoefficient
+            hparams["ent_coef"] = string(hparams["ent_coef"])
+        end
+        if haskey(hparams, "hidden_dims")
+            hparams["hidden_dims"] = string(hparams["hidden_dims"])
+        end
+        DRiL.TensorBoardLogger.write_hparams!(agent.logger, hparams, get_hparam_metrics(alg_type))
     end
 
     # Train
@@ -415,24 +455,18 @@ end
 # MAIN FUNCTION
 # =============================================================================
 
-function main(; n_trials::Int=50, max_steps_per_trial::Int=30_000, experiment_name::String="ppo_search_$(Dates.format(now(), "yyyy-mm-dd_HH-MM"))", environment::Type=PendulumEnv, algorithm::Type{<:DRiL.AbstractAlgorithm}=PPO)
-    config = SearchConfig(
-        n_trials=n_trials,
-        max_steps_per_trial=max_steps_per_trial,
-        experiment_name=experiment_name,
-        environment=environment,
-        algorithm=algorithm
-    )
+function main(; kwargs...)
+    config = SearchConfig(; kwargs...)
 
     # Run search
     run_hyperparameter_search(config)
 
 
     # Analyze results
-    grouped_df, best_config = analyze_results(experiment_name, environment, algorithm)
+    grouped_df, best_config = analyze_results(config.experiment_name, config.environment, config.algorithm)
 
     @info "Hyperparameter search complete!"
-    @info "Results saved to: $(datadir("experiments", env_name(environment), experiment_name))"
+    @info "Results saved to: $(datadir("experiments", env_name(config.environment), config.experiment_name))"
 
     return grouped_df, best_config
 end
