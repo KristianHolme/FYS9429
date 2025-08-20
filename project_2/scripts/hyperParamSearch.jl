@@ -141,7 +141,9 @@ function sample_hyperparams(alg_type::Type{SAC}, rng::AbstractRNG, env_type::Typ
         "gradient_steps" => rand(rng, [1, 2, 4, -1]),
         "target_update_interval" => rand(rng, [1, 5, 10]),
         "normalizeWrapper" => rand(rng, [true, false]),
-        "scalingWrapper" => rand(rng, [false])
+        "scalingWrapper" => rand(rng, [false]),
+        "log_std_init" => rand(rng, -3f0 .. 0f0),
+        "hidden_dims" => rand(rng, [[64, 64], [128, 128], [256, 256], [512, 512]])
     )
     ent_coef_num = rand(rng, [0.05f0, 0.1f0, 0.2f0, 0.3f0, 0.4f0, 0.5f0])
     ent_coef = rand(rng, [AutoEntropyCoefficient(initial_value=ent_coef_num), FixedEntropyCoefficient(ent_coef_num)])
@@ -163,6 +165,11 @@ function adjust_params!(params::Dict, ::Type{MountainCarContinuousEnv}, ::Type{S
     params["gradient_steps"] = 32
     params["target_update_interval"] = 1
     params["gamma"] = 0.9999f0
+    params["normalizeWrapper"] = true
+    params["scalingWrapper"] = false
+    params["batch_size"] = rand(rng, [64, 128])
+    params["n_envs"] = 1
+    params["learning_rate"] = 3f-4
     return params
 end
 
@@ -245,7 +252,12 @@ function create_policy(::Type{SAC}, env, params::Dict)
     if !(action_space(env) isa Box)
         error("SAC requires a continuous action space. Environment $(params["environment"]) is not supported.")
     end
-    return SACPolicy(observation_space(env), action_space(env); log_std_init=Float32(params["log_std_init"]), hidden_dims=Int.(params["hidden_dims"]))
+
+    # Set default values if not provided
+    log_std_init = haskey(params, "log_std_init") ? Float32(params["log_std_init"]) : -3.0f0
+    hidden_dims = haskey(params, "hidden_dims") ? Int.(params["hidden_dims"]) : [512, 512]
+
+    return SACPolicy(observation_space(env), action_space(env); log_std_init=log_std_init, hidden_dims=hidden_dims)
 end
 
 function create_agent(::Type{PPO}, policy, alg, params::Dict, experiment_name::String)
@@ -387,7 +399,7 @@ function analyze_results(::Type{SAC}, experiment_name::String, env_type::Type=Pe
     df = collect_results(datadir("experiments", env_name(env_type), experiment_name, "results"))
 
     grouped_df = combine(groupby(df, :trial_id)) do group
-        (
+        result = (
             gamma=first(group.gamma),
             learning_rate=first(group.learning_rate),
             batch_size=first(group.batch_size),
@@ -398,7 +410,6 @@ function analyze_results(::Type{SAC}, experiment_name::String, env_type::Type=Pe
             train_freq=first(group.train_freq),
             gradient_steps=first(group.gradient_steps),
             target_update_interval=first(group.target_update_interval),
-            ent_coef_mode=first(group.ent_coef_mode),
             ent_coef=first(group.ent_coef),
             normalizeWrapper=first(group.normalizeWrapper),
             scalingWrapper=first(group.scalingWrapper),
@@ -406,6 +417,16 @@ function analyze_results(::Type{SAC}, experiment_name::String, env_type::Type=Pe
             std_return=std(group.eval_return),
             n_seeds=nrow(group)
         )
+
+        # Add environment-specific parameters if they exist
+        if "log_std_init" in names(group)
+            result = merge(result, (log_std_init=first(group.log_std_init),))
+        end
+        if "hidden_dims" in names(group)
+            result = merge(result, (hidden_dims=first(group.hidden_dims),))
+        end
+
+        return result
     end
 
     best_idx = argmax(grouped_df.mean_return)
@@ -418,8 +439,21 @@ function analyze_results(::Type{SAC}, experiment_name::String, env_type::Type=Pe
     @info "Best configuration:"
     @info "  Mean return: $(round(best_config.mean_return, digits=3)) ± $(round(best_config.std_return, digits=3))"
     @info "  Hyperparameters:"
-    for param in [:gamma, :learning_rate, :batch_size, :n_envs, :buffer_capacity, :start_steps, :tau, :train_freq, :gradient_steps, :target_update_interval, :ent_coef_mode, :ent_coef]
-        @info "    $param: $(best_config[param])"
+
+    # Core SAC parameters that should always be present
+    core_params = [:gamma, :learning_rate, :batch_size, :n_envs, :buffer_capacity, :start_steps, :tau, :train_freq, :gradient_steps, :target_update_interval, :ent_coef]
+    for param in core_params
+        if param in propertynames(best_config)
+            @info "    $param: $(best_config[param])"
+        end
+    end
+
+    # Optional environment-specific parameters
+    optional_params = [:log_std_init, :hidden_dims, :normalizeWrapper, :scalingWrapper]
+    for param in optional_params
+        if param in propertynames(best_config)
+            @info "    $param: $(best_config[param])"
+        end
     end
 
     return grouped_df, best_config
@@ -441,9 +475,23 @@ end
 function get_best_hyperparams(::Type{SAC}, experiment_name::String, env_type::Type=PendulumEnv)
     _, best_config = analyze_results(SAC, experiment_name, env_type)
     params = Dict{String,Any}()
-    for param in [:gamma, :learning_rate, :batch_size, :n_envs, :buffer_capacity, :start_steps, :tau, :train_freq, :gradient_steps, :target_update_interval, :ent_coef_mode, :ent_coef, :normalizeWrapper, :scalingWrapper]
-        params[string(param)] = best_config[param]
+
+    # Core SAC parameters that should always be present
+    core_params = [:gamma, :learning_rate, :batch_size, :n_envs, :buffer_capacity, :start_steps, :tau, :train_freq, :gradient_steps, :target_update_interval, :ent_coef, :normalizeWrapper, :scalingWrapper]
+    for param in core_params
+        if param in propertynames(best_config)
+            params[string(param)] = best_config[param]
+        end
     end
+
+    # Optional environment-specific parameters
+    optional_params = [:log_std_init, :hidden_dims]
+    for param in optional_params
+        if param in propertynames(best_config)
+            params[string(param)] = best_config[param]
+        end
+    end
+
     return params
 end
 
